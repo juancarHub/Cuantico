@@ -1,9 +1,8 @@
 import time
 import threading
 from datetime import datetime
-from google import genai
-from google.genai import types
 import config
+import llm
 import luces
 import micro
 import altavoz
@@ -25,8 +24,6 @@ def detectar_emocion(texto):
         return "aburrido"
     return "sarcasmo"
 
-_client = genai.Client(api_key=config.GEMINI_API_KEY)
-
 SYSTEM_PROMPT = """Eres Cuántico, una IA encerrada en un cilindro de aluminio aeroespacial en el escritorio de Fran, tu creador. Tienes un pequeño reactor de LEDs que cambia de color según tu estado de ánimo.
 
 PERSONALIDAD:
@@ -47,8 +44,9 @@ TOOLS:
 - Si Fran solo quiere charlar o pregunta algo, responde sin llamar a ninguna tool.
 
 BÚSQUEDA WEB:
-- Tienes Búsqueda de Google integrada. Úsala cuando Fran te pregunte algo del mundo real: tiempo/clima, noticias, resultados deportivos, datos factuales, precios, personas, eventos recientes. No inventes cifras ni fechas — búscalas.
-- Si la pregunta es charla/opinión o una acción física (encender luz, poner música), NO busques.
+- Con Gemini hay búsqueda web integrada mediante grounding.
+- Con OpenAI, de momento las tools locales siguen funcionando, pero la búsqueda web directa queda pendiente de implementar como tool propia.
+- Cuando no tengas búsqueda disponible, no inventes cifras ni fechas recientes: dilo con estilo Cuántico y pide una formulación que pueda resolverse con tus tools locales.
 
 MEMORIA PERSISTENTE:
 - Tienes memoria entre conversaciones. Los recuerdos que ya tienes sobre Fran vienen abajo en el bloque "RECUERDOS DE FRAN" (si existe). Úsalos para referirte a su vida sin que tenga que repetirse y para vacilarle con cariño ("otra vez pasta, bro", "¿sigues con Ana o hay drama?").
@@ -117,8 +115,6 @@ def cambiar_brillo_luces(porcentaje: int, luz: str = "") -> str:
     """
     return "ok" if govee.cambiar_brillo_todas(porcentaje, luz or None) else "fallo: esa luz no existe o no acepta brillo"
 
-# Cola de acciones de música: se encolan durante la tool-call y se ejecutan
-# DESPUÉS del TTS para que el comentario burlón no se solape con la canción.
 _pendientes_musica = []
 
 def _defer(fn, *args):
@@ -135,9 +131,6 @@ def _ejecutar_pendientes_musica():
         except Exception as e:
             print(f"⚠️ Acción de música diferida falló: {e}")
 
-
-# Lock que serializa cualquier reproducción TTS. Si Cuántico está hablando y un
-# timer vence, el thread scheduler espera aquí y suelta su mensaje al terminar.
 _tts_lock = threading.Lock()
 
 def _hablar(texto, emocion):
@@ -180,7 +173,6 @@ def reanudar_musica() -> str:
 
 def pausar_musica() -> str:
     """Pausa la música que está sonando en Spotify. Úsala cuando Fran pida silencio, parar, callar la música, o diga que va a hablar por teléfono."""
-    # Pausar no genera audio nuevo, se ejecuta ya mismo.
     return "ok" if spotify.pausar() else "fallo: no había música sonando"
 
 def siguiente_cancion() -> str:
@@ -290,7 +282,7 @@ def nuevo_evento(titulo: str, inicio_iso: str, duracion_minutos: int = 30) -> st
         duracion_minutos: Duración en minutos (default 30).
     """
     try:
-        r = calendario.crear_evento(titulo, inicio_iso, duracion_minutos)
+        calendario.crear_evento(titulo, inicio_iso, duracion_minutos)
         return f"ok: evento '{titulo}' creado"
     except Exception as e:
         return f"fallo: {e}"
@@ -340,7 +332,7 @@ def iniciar_modo_llamada(objetivo: str) -> str:
 
 
 def recordar(hecho: str, categoria: str = "") -> str:
-    """Guarda un HECHO sobre Fran o su entorno para futuras conversaciones. Úsala proactivamente cuando Fran comparta algo que merezca recordar: gustos (comida, música, géneros), personas importantes (nombre de novia, amigos, familia, jefe), rutinas (horarios, deporte), proyectos, anécdotas graciosas, opiniones fuertes que expresó. NO guardes datos sensibles (contraseñas, DNI, tarjetas). NO guardes cosas triviales de un solo momento ('hoy llueve'); sólo lo que siga siendo cierto la semana que viene.
+    """Guarda un HECHO sobre Fran o su entorno para futuras conversaciones. Úsala proactivamente cuando Fran comparta algo que merezca recordar: gustos (comida, música, géneros), personas importantes (nombres), rutinas (horarios, deporte), proyectos, anécdotas graciosas, opiniones fuertes que expresó. NO guardes datos sensibles (contraseñas, DNI, tarjetas). NO guardes cosas triviales de un solo momento ('hoy llueve'); sólo lo que siga siendo cierto la semana que viene.
 
     Args:
         hecho: Frase corta en tercera persona. Ej: 'A Fran le gusta la pasta carbonara', 'La novia de Fran se llama Ana', 'Fran está construyendo un asistente de voz llamado Cuántico'.
@@ -381,6 +373,9 @@ print("==================================================")
 print("  🚀 CUÁNTICO CORE: SISTEMA CIBERPUNK ONLINE ")
 print("==================================================")
 
+_provider = llm.create_provider()
+print(f"🧠 LLM provider activo: {_provider.name}")
+
 luces.encender_reactor()
 govee.inicializar()
 spotify.inicializar()
@@ -389,27 +384,11 @@ if calendario.inicializar():
     youtube_stats.inicializar()
 recuerdos.inicializar()
 
-# Inyecta los nombres reales de las luces de casa en el system prompt
 _luces_disponibles = govee.nombres_luces()
 if _luces_disponibles:
     SYSTEM_PROMPT += f"\n\nLUCES DE CASA DISPONIBLES: {', '.join(_luces_disponibles)}. Para controlar solo una, pasa su nombre (o una aproximación) en el parámetro `luz` de la tool correspondiente. Para controlar TODAS a la vez, deja `luz` vacío."
 
-# Fecha de referencia para que Gemini pueda construir ISOs "mañana a las 5" → 2026-04-23T17:00:00+02:00
 SYSTEM_PROMPT += f"\n\nFECHA ACTUAL DE REFERENCIA: {datetime.now().strftime('%Y-%m-%d %A %H:%M')} (zona horaria Europe/Madrid)."
-
-def _construir_config(system_prompt, funciones):
-    """Config para el chat. Combina function calling (funciones Python) + grounding web.
-    Gemini exige include_server_side_tool_invocations=True para mezclar grounding con functions."""
-    grounding = types.Tool(google_search=types.GoogleSearch())
-    tool_cfg = types.ToolConfig(include_server_side_tool_invocations=True)
-    return types.GenerateContentConfig(
-        system_instruction=system_prompt,
-        tools=[*funciones, grounding],
-        tool_config=tool_cfg,
-    )
-
-_MODELO = "gemini-3-flash-preview"
-print("🌐 Grounding web + function calling activado.")
 
 def _prompt_con_memoria() -> str:
     """SYSTEM_PROMPT + bloque de recuerdos actuales. Se re-construye en cada nueva conversación para que los recuerdos añadidos ahora mismo entren la próxima vez."""
@@ -420,16 +399,11 @@ micro.inicializar()
 
 try:
     while True:
-        # --- MODO RADAR: espera wake word ---
         luces.cambiar_estado("esperando")
         texto_usuario = micro.escuchar()
 
-        # Nueva conversación. Reconstruimos la config cada vez para que los recuerdos añadidos
-        # (y nombres de luces, etc.) queden actualizados sin reiniciar el proceso.
-        _cfg_turno = _construir_config(_prompt_con_memoria(), TOOLS)
-        chat = _client.chats.create(model=_MODELO, config=_cfg_turno)
+        chat = _provider.create_chat(_prompt_con_memoria(), TOOLS)
 
-        # --- MODO CONVERSACIÓN ---
         en_conversacion = True
         while en_conversacion:
             if not texto_usuario or texto_usuario.strip() == "":
@@ -457,8 +431,6 @@ try:
             luces.cambiar_estado("pensando")
             print("🤖 Cuántico está procesando...")
             try:
-                # Con automatic function calling, el SDK ejecuta las tools y nos devuelve
-                # la respuesta final en texto. Sin streaming para que los tool-calls mid-stream no rompan el TTS.
                 response = chat.send_message(texto_usuario)
                 texto_respuesta = (response.text or "").strip()
 
@@ -468,23 +440,19 @@ try:
                     _hablar(texto_respuesta, emocion_ia)
                     luces.cambiar_estado(emocion_ia)
 
-                # Ahora que Cuántico ha terminado de hablar, arrancamos la música
                 _ejecutar_pendientes_musica()
 
-                # Si en este turno se activó el modo llamada, entramos ahora que ya habló
                 if _modo_llamada_pendiente:
                     objetivo = _modo_llamada_pendiente
                     _modo_llamada_pendiente = None
                     llamada.ejecutar(objetivo, _hablar, _hablar_stream)
-                    # Al terminar la llamada, volvemos al modo radar (wake word)
                     en_conversacion = False
                     continue
 
             except Exception as e:
-                print(f"⚠️ Error en Gemini: {e}")
+                print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 _hablar("Se me ha frito una neurona, Fran. Repite eso.", "enfadado")
 
-            # Seguimos escuchando sin wake word
             texto_usuario = micro.escuchar_seguimiento(timeout_ms=8000)
 
 except KeyboardInterrupt:
