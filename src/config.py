@@ -32,7 +32,19 @@ def _ruta(clave: str, por_defecto: str = "") -> str:
 
 
 # LLM
-GEMINI_API_KEY = _req("GEMINI_API_KEY")
+LLM_PROVIDER = _opt("LLM_PROVIDER", "openai").lower()
+
+OPENAI_API_KEY = _opt("OPENAI_API_KEY")
+OPENAI_MODEL = _opt("OPENAI_MODEL", "gpt-4.1-mini")
+
+GEMINI_API_KEY = _opt("GEMINI_API_KEY")
+GEMINI_MODEL = _opt("GEMINI_MODEL", "gemini-3-flash-preview")
+
+if LLM_PROVIDER == "openai" and not OPENAI_API_KEY:
+    raise RuntimeError("Falta OPENAI_API_KEY en .env")
+
+if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
+    raise RuntimeError("Falta GEMINI_API_KEY en .env")
 
 # TTS
 ELEVENLABS_API_KEY = _req("ELEVENLABS_API_KEY")
