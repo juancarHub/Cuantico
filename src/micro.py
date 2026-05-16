@@ -3,6 +3,7 @@ import webrtcvad
 import numpy as np
 import requests
 import os
+import tempfile
 import time
 import wave
 from openwakeword.model import Model
@@ -43,7 +44,6 @@ def _encontrar_dispositivo():
                 candidatos.append((prio, i, info['name']))
                 break
         else:
-            # Cualquier input no-matched queda como fallback
             candidatos.append((99, i, info['name']))
     if not candidatos:
         print("⚠️ Ningún dispositivo de entrada detectado. Usando default.")
@@ -104,7 +104,6 @@ def _esperar_wake():
         audio = np.frombuffer(raw, dtype=np.int16)
         scores = _oww.predict(audio)
         mejor = max(scores.values())
-        # Log agresivo de scores para diagnóstico
         if mejor > 0.05 and abs(mejor - _ultimo_log) > 0.02:
             print(f"   🔍 score wake={mejor:.3f} (threshold {WAKE_THRESHOLD})")
             _ultimo_log = mejor
@@ -146,7 +145,9 @@ def _grabar_desde(frame_inicial=b""):
         if (time.time() - inicio) * 1000 > MAX_UTTERANCE_MS:
             break
 
-    path = "/dev/shm/grabacion.wav"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        path = tmp.name
+
     with wave.open(path, 'wb') as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
