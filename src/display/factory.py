@@ -11,6 +11,15 @@ def create_display():
     if backend in ("null", "none"):
         return NullDisplay()
 
+    if backend in ("screen", "tablet", "windows"):
+        try:
+            from .screen_display import ScreenDisplay
+
+            print("🖥️ Backend visual ScreenDisplay cargado.")
+            return ScreenDisplay()
+        except Exception as exc:
+            print(f"⚠️ ScreenDisplay no disponible: {exc}")
+
     if backend in ("neopixel", "raspberry", "auto"):
         try:
             from .neopixel_display import NeoPixelDisplay
