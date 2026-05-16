@@ -1,5 +1,6 @@
 python-dotenv
 google-genai
+openai
 requests
 spotipy
 google-api-python-client
