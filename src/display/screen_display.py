@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import queue
 import sys
 import threading
@@ -52,6 +53,7 @@ class ScreenDisplay(BaseDisplay):
             return
 
         app = QApplication.instance() or QApplication(sys.argv[:1])
+        display_mode = os.getenv("SCREEN_DISPLAY_MODE", "window").lower()
 
         class FaceWidget(QWidget):
             def __init__(self, events: queue.Queue[str]) -> None:
@@ -60,7 +62,8 @@ class ScreenDisplay(BaseDisplay):
                 self.state = "esperando"
                 self.t0 = time.time()
                 self.setWindowTitle("Cuántico")
-                self.setMinimumSize(640, 420)
+                self.resize(760, 520)
+                self.setMinimumSize(520, 360)
                 self.setStyleSheet("background: #090909;")
 
                 self.timer = QTimer(self)
@@ -186,6 +189,9 @@ class ScreenDisplay(BaseDisplay):
                 painter.drawArc(rect, start, span)
 
         widget = FaceWidget(self._events)
-        widget.showFullScreen()
+        if display_mode in ("fullscreen", "full", "tablet"):
+            widget.showFullScreen()
+        else:
+            widget.show()
         self._ready.set()
         app.exec()
