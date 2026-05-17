@@ -16,6 +16,9 @@ VAD_FRAME_MS = 20
 VAD_FRAME = SAMPLE_RATE * VAD_FRAME_MS // 1000
 PUSH_TO_TALK_MAX_MS = int(os.getenv("PUSH_TO_TALK_MAX_MS", "12000"))
 PUSH_TO_TALK_MODE = os.getenv("PUSH_TO_TALK_MODE", "enter_stop").lower()
+AUTO_STOP_SILENCE_MS = int(os.getenv("AUTO_STOP_SILENCE_MS", "1400"))
+AUTO_STOP_MIN_VOICE_MS = int(os.getenv("AUTO_STOP_MIN_VOICE_MS", "600"))
+AUTO_STOP_RMS_THRESHOLD = float(os.getenv("AUTO_STOP_RMS_THRESHOLD", "500"))
 
 
 class AudioInput:
@@ -119,6 +122,12 @@ class AudioInput:
             wf.writeframes(bytes(buffer_audio))
         return path
 
+    def _rms(self, frame: bytes) -> float:
+        audio = np.frombuffer(frame, dtype=np.int16).astype(np.float32)
+        if audio.size == 0:
+            return 0.0
+        return float(np.sqrt(np.mean(audio * audio)))
+
     def grabar_fijo(self, max_ms=PUSH_TO_TALK_MAX_MS):
         luces.cambiar_estado("escuchando")
         buffer_audio = bytearray()
@@ -167,7 +176,54 @@ class AudioInput:
 
         return self.guardar_wav(buffer_audio)
 
+    def grabar_hasta_tap_o_silencio(self, max_ms=PUSH_TO_TALK_MAX_MS):
+        luces.cambiar_estado("escuchando")
+        buffer_audio = bytearray()
+        stop_event = threading.Event()
+
+        def _wait_tap():
+            print("Toca la cara otra vez para parar, o calla y se enviará solo...")
+            ui_events.wait_for("screen_tap")
+            stop_event.set()
+
+        threading.Thread(target=_wait_tap, daemon=True).start()
+
+        inicio = time.time()
+        voz_ms = 0
+        silencio_ms = 0
+        hubo_voz = False
+
+        print(
+            f"🎙️ Grabando por tap/silencio. "
+            f"silencio={AUTO_STOP_SILENCE_MS}ms, "
+            f"min_voz={AUTO_STOP_MIN_VOICE_MS}ms, "
+            f"rms>{AUTO_STOP_RMS_THRESHOLD:.0f}, "
+            f"máximo={max_ms // 1000}s."
+        )
+
+        while not stop_event.is_set() and (time.time() - inicio) * 1000 < max_ms:
+            frame = self.leer_raw(VAD_FRAME)
+            buffer_audio += frame
+
+            rms = self._rms(frame)
+            if rms >= AUTO_STOP_RMS_THRESHOLD:
+                voz_ms += VAD_FRAME_MS
+                silencio_ms = 0
+                if voz_ms >= AUTO_STOP_MIN_VOICE_MS:
+                    hubo_voz = True
+            else:
+                if hubo_voz:
+                    silencio_ms += VAD_FRAME_MS
+
+            if hubo_voz and silencio_ms >= AUTO_STOP_SILENCE_MS:
+                print("🎙️ Silencio detectado. Enviando audio.")
+                break
+
+        return self.guardar_wav(buffer_audio)
+
     def grabar_manual(self, max_ms=PUSH_TO_TALK_MAX_MS):
+        if PUSH_TO_TALK_MODE in ("tap_or_silence", "screen_tap_or_silence", "touch_or_silence", "auto_stop"):
+            return self.grabar_hasta_tap_o_silencio(max_ms=max_ms)
         if PUSH_TO_TALK_MODE in ("tap_stop", "screen_tap", "touch_stop"):
             return self.grabar_hasta_tap(max_ms=max_ms)
         if PUSH_TO_TALK_MODE in ("enter_stop", "manual_stop", "stop_enter"):
