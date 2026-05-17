@@ -31,6 +31,10 @@ def _ruta(clave: str, por_defecto: str = "") -> str:
     return str(p if p.is_absolute() else (_RAIZ / p).resolve())
 
 
+# Display / plataforma visual
+DISPLAY_BACKEND = _opt("DISPLAY_BACKEND", "screen").lower()
+SCREEN_DISPLAY_MODE = _opt("SCREEN_DISPLAY_MODE", "window").lower()
+
 # LLM
 LLM_PROVIDER = _opt("LLM_PROVIDER", "openai").lower()
 
