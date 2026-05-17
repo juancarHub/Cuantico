@@ -51,8 +51,14 @@ ELEVENLABS_API_KEY = _req("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = _opt("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
 # STT / wake word
-DEEPGRAM_API_KEY = _req("DEEPGRAM_API_KEY")
+STT_PROVIDER = _opt("STT_PROVIDER", "deepgram").lower()
+OPENAI_STT_MODEL = _opt("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
+OPENAI_STT_LANGUAGE = _opt("OPENAI_STT_LANGUAGE", "es")
+DEEPGRAM_API_KEY = _opt("DEEPGRAM_API_KEY")
 WAKE_MODEL_PATH = _opt("WAKE_MODEL_PATH")
+
+if STT_PROVIDER in ("deepgram", "dg") and not DEEPGRAM_API_KEY:
+    raise RuntimeError("Falta DEEPGRAM_API_KEY en .env")
 
 # Casa
 GOVEE_API_KEY = _req("GOVEE_API_KEY")
