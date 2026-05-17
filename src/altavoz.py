@@ -10,7 +10,11 @@ import luces
 
 ELEVENLABS_API_KEY = config.ELEVENLABS_API_KEY
 VOICE_ID = config.ELEVENLABS_VOICE_ID
-TTS_MODEL = "eleven_turbo_v2_5"  # ~250ms TTFB, calidad cercana al multilingual
+ELEVENLABS_TTS_MODEL = "eleven_turbo_v2_5"
+
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs").lower()
+OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
 
 
 def _backend_audio():
@@ -27,10 +31,7 @@ def _usar_backend_archivo():
 
 
 def _lanzar_mpg123():
-    """
-    Pipeline Linux/Raspberry: MP3 → sox → aplay.
-    Se mantiene para la Pi, pero en Windows usamos reproducción por fichero.
-    """
+    """Pipeline Linux/Raspberry: MP3 → sox → aplay."""
     sox_proc = subprocess.Popen(
         ["sox", "-q", "-t", "mp3", "-", "-t", "wav", "-",
          "highpass", "300",
@@ -62,16 +63,16 @@ def _lanzar_mpg123():
     return Pipeline(sox_proc, aplay_proc)
 
 
-def _payload_tts(texto):
+def _payload_elevenlabs(texto):
     return {
         "text": texto,
-        "model_id": TTS_MODEL,
+        "model_id": ELEVENLABS_TTS_MODEL,
         "language_code": "es",
         "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
     }
 
 
-def _headers_tts():
+def _headers_elevenlabs():
     return {
         "Accept": "audio/mpeg",
         "Content-Type": "application/json",
@@ -79,10 +80,9 @@ def _headers_tts():
     }
 
 
-def _tts_a_tuberia(texto, stdin):
-    """Pide audio a ElevenLabs en streaming y escribe bytes directos al pipeline Linux."""
+def _tts_elevenlabs_a_tuberia(texto, stdin):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream?output_format=mp3_22050_32"
-    r = requests.post(url, json=_payload_tts(texto), headers=_headers_tts(), stream=True, timeout=30)
+    r = requests.post(url, json=_payload_elevenlabs(texto), headers=_headers_elevenlabs(), stream=True, timeout=30)
     if r.status_code != 200:
         print(f"⚠️ ElevenLabs {r.status_code}: {r.text[:120]}")
         return
@@ -95,10 +95,9 @@ def _tts_a_tuberia(texto, stdin):
                 return
 
 
-def _tts_a_mp3_file(texto):
-    """Genera un MP3 temporal multiplataforma desde ElevenLabs."""
+def _tts_elevenlabs_a_mp3_file(texto):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}?output_format=mp3_22050_32"
-    r = requests.post(url, json=_payload_tts(texto), headers=_headers_tts(), timeout=45)
+    r = requests.post(url, json=_payload_elevenlabs(texto), headers=_headers_elevenlabs(), timeout=45)
     if r.status_code != 200:
         raise RuntimeError(f"ElevenLabs {r.status_code}: {r.text[:160]}")
 
@@ -107,8 +106,54 @@ def _tts_a_mp3_file(texto):
         return tmp.name
 
 
+def _tts_openai_a_mp3_file(texto):
+    from openai import OpenAI
+
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        path = tmp.name
+
+    with client.audio.speech.with_streaming_response.create(
+        model=OPENAI_TTS_MODEL,
+        voice=OPENAI_TTS_VOICE,
+        input=texto,
+        response_format="mp3",
+    ) as response:
+        response.stream_to_file(path)
+
+    return path
+
+
+def _tts_a_mp3_file(texto):
+    if TTS_PROVIDER == "openai":
+        return _tts_openai_a_mp3_file(texto)
+    if TTS_PROVIDER in ("eleven", "elevenlabs", "11labs"):
+        return _tts_elevenlabs_a_mp3_file(texto)
+    raise RuntimeError(f"TTS_PROVIDER no soportado: {TTS_PROVIDER}")
+
+
+def _tts_a_tuberia(texto, stdin):
+    if TTS_PROVIDER == "openai":
+        path = _tts_openai_a_mp3_file(texto)
+        try:
+            with open(path, "rb") as fh:
+                while True:
+                    chunk = fh.read(2048)
+                    if not chunk:
+                        break
+                    stdin.write(chunk)
+                    stdin.flush()
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        return
+
+    _tts_elevenlabs_a_tuberia(texto, stdin)
+
+
 def _reproducir_archivo(path):
-    """Reproduce un fichero de audio en Windows/macOS/Linux usando playsound."""
     try:
         from playsound import playsound
     except Exception as exc:
@@ -120,6 +165,7 @@ def _reproducir_archivo(path):
 
 
 def _hablar_por_archivo(texto):
+    print(f"🔊 TTS provider: {TTS_PROVIDER}")
     path = _tts_a_mp3_file(texto)
     try:
         _reproducir_archivo(path)
@@ -131,7 +177,6 @@ def _hablar_por_archivo(texto):
 
 
 def _encontrar_corte(buffer):
-    """Devuelve índice del final de la primera frase, o -1 si no hay."""
     candidatos = []
     for p in [". ", "! ", "? ", ".\n", "!\n", "?\n", "\n"]:
         i = buffer.find(p)
@@ -141,7 +186,6 @@ def _encontrar_corte(buffer):
 
 
 def hablar(texto, emocion):
-    """Reproduce un texto completo."""
     luces.cambiar_estado(emocion)
     print(f"🔊 [Altavoz] Escupiendo audio ({emocion})...")
 
@@ -161,11 +205,6 @@ def hablar(texto, emocion):
 
 
 def hablar_stream(generador_texto, emocion="sarcasmo"):
-    """
-    Recibe un generador de strings y habla por frases.
-    En Windows se reproduce frase a frase por ficheros temporales.
-    En Raspberry conserva el pipeline streaming sox/aplay.
-    """
     luces.cambiar_estado(emocion)
     print(f"🔊 [Altavoz] Streaming paralelo ({emocion})...")
 
