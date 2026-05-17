@@ -176,7 +176,7 @@ class ScreenDisplay(BaseDisplay):
                 return {
                     "escuchando": 4.0,
                     "pensando": 7.0,
-                    "hablando": 6.5,
+                    "hablando": 3.2,
                     "apagado": 0.3,
                 }.get(self.operation, 2.0)
 
@@ -204,8 +204,8 @@ class ScreenDisplay(BaseDisplay):
                     painter.drawText(int(cx - r * 0.4), int(cy + r * 0.05), int(r * 0.8), int(r * 0.35), Qt.AlignCenter, dots)
                     return
                 if self.operation == "hablando":
-                    openness = 0.12 + 0.12 * abs(math.sin(t * 13))
-                    painter.drawEllipse(int(cx - r * 0.20), int(cy + r * 0.22), int(r * 0.40), int(r * openness))
+                    openness = 0.10 + 0.08 * abs(math.sin(t * 5.2))
+                    painter.drawEllipse(int(cx - r * 0.18), int(cy + r * 0.22), int(r * 0.36), int(r * openness))
                     return
                 if self.operation == "apagado":
                     painter.drawLine(int(cx - r * 0.18), int(cy + r * 0.28), int(cx + r * 0.18), int(cy + r * 0.28))
