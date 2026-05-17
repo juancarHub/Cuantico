@@ -6,16 +6,13 @@ import wave
 
 import numpy as np
 import pyaudio
-import requests
 
 import config
 import luces
+from stt import create_stt
 
-DEEPGRAM_API_KEY = config.DEEPGRAM_API_KEY
 WAKE_MODEL = config.WAKE_MODEL_PATH
-STT_PROVIDER = config.STT_PROVIDER
-OPENAI_STT_MODEL = config.OPENAI_STT_MODEL
-OPENAI_STT_LANGUAGE = config.OPENAI_STT_LANGUAGE
+_stt_provider = create_stt()
 
 SAMPLE_RATE = 16000
 OWW_FRAME = 1280
@@ -209,44 +206,12 @@ def _grabar_hasta_enter(max_ms=PUSH_TO_TALK_MAX_MS):
     return _guardar_wav(buffer_audio)
 
 
-def _transcribir_deepgram(path):
-    url = "https://api.deepgram.com/v1/listen?model=nova-3&language=es&smart_format=true"
-    headers = {
-        "Authorization": f"Token {DEEPGRAM_API_KEY}",
-        "Content-Type": "audio/wav",
-    }
-    with open(path, "rb") as audio:
-        response = requests.post(url, headers=headers, data=audio, timeout=10)
-
-    if response.status_code == 200:
-        return response.json()['results']['channels'][0]['alternatives'][0]['transcript']
-    print(f"⚠️ Error Deepgram: {response.status_code} {response.text[:160]}")
-    return ""
-
-
-def _transcribir_openai(path):
-    from openai import OpenAI
-
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    with open(path, "rb") as audio:
-        result = client.audio.transcriptions.create(
-            model=OPENAI_STT_MODEL,
-            file=audio,
-            language=OPENAI_STT_LANGUAGE,
-        )
-    return (result.text or "").strip()
-
-
 def _transcribir(path):
-    print(f"🧠 [STT:{STT_PROVIDER}] Analizando...")
+    print(f"🧠 [STT:{_stt_provider.name}] Analizando...")
     try:
-        if STT_PROVIDER == "openai":
-            return _transcribir_openai(path)
-        if STT_PROVIDER in ("deepgram", "dg"):
-            return _transcribir_deepgram(path)
-        raise RuntimeError(f"STT_PROVIDER no soportado: {STT_PROVIDER}")
+        return _stt_provider.transcribe(path)
     except Exception as e:
-        print(f"⚠️ Error STT ({STT_PROVIDER}): {e}")
+        print(f"⚠️ Error STT ({_stt_provider.name}): {e}")
         return ""
     finally:
         if os.path.exists(path):
