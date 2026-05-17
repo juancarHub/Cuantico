@@ -116,6 +116,17 @@ class ScreenDisplay(BaseDisplay):
                     ui_events.publish("screen_tap")
                 event.accept()
 
+            def _emotion_modifiers(self):
+                if self.emotion == "enfadado":
+                    return {"eye_w": 0.21, "eye_h": 0.11, "tilt": -0.06, "wave_amp": 0.060, "wave_freq": 3.1, "wave_speed": 6.2, "jitter": 0.65}
+                if self.emotion == "cachondeo":
+                    return {"eye_w": 0.24, "eye_h": 0.22, "tilt": 0.03, "wave_amp": 0.070, "wave_freq": 2.4, "wave_speed": 5.4, "jitter": 0.95}
+                if self.emotion == "aburrido":
+                    return {"eye_w": 0.30, "eye_h": 0.07, "tilt": 0.00, "wave_amp": 0.025, "wave_freq": 1.2, "wave_speed": 1.4, "jitter": 0.20}
+                if self.emotion == "sarcasmo":
+                    return {"eye_w": 0.23, "eye_h": 0.16, "tilt": 0.08, "wave_amp": 0.045, "wave_freq": 2.0, "wave_speed": 3.7, "jitter": 0.55}
+                return {"eye_w": 0.22, "eye_h": 0.20, "tilt": 0.00, "wave_amp": 0.040, "wave_freq": 2.0, "wave_speed": 3.4, "jitter": 0.35}
+
             def paintEvent(self, event) -> None:
                 painter = QPainter(self)
                 painter.setRenderHint(QPainter.Antialiasing)
@@ -136,11 +147,7 @@ class ScreenDisplay(BaseDisplay):
                 painter.drawEllipse(int(cx - r), int(cy - r + bob), int(2 * r), int(2 * r))
 
                 painter.setBrush(QBrush(QColor(*eye)))
-                ex = r * 0.38
-                ey = r * -0.18 + bob
-                eye_w, eye_h = self._eye_shape(r, t)
-                painter.drawEllipse(int(cx - ex - eye_w / 2), int(cy + ey - eye_h / 2), int(eye_w), int(eye_h))
-                painter.drawEllipse(int(cx + ex - eye_w / 2), int(cy + ey - eye_h / 2), int(eye_w), int(eye_h))
+                self._draw_eyes(painter, cx, cy + bob, r, t)
 
                 pen = QPen(QColor(*mouth), max(5, int(r * 0.045)))
                 pen.setCapStyle(Qt.RoundCap)
@@ -151,6 +158,15 @@ class ScreenDisplay(BaseDisplay):
                 painter.setPen(QPen(QColor(220, 220, 220, 190), 1))
                 painter.setFont(QFont("Arial", max(12, int(r * 0.10))))
                 painter.drawText(0, int(h - r * 0.28), w, int(r * 0.2), Qt.AlignCenter, self.operation.upper())
+
+            def _draw_eyes(self, painter, cx: float, cy: float, r: float, t: float) -> None:
+                mods = self._emotion_modifiers()
+                ex = r * 0.38
+                ey = r * -0.18
+                eye_w, eye_h = self._eye_shape(r, t)
+                tilt = mods["tilt"] * r if self.operation == "hablando" else 0
+                painter.drawEllipse(int(cx - ex - eye_w / 2), int(cy + ey - eye_h / 2 + tilt), int(eye_w), int(eye_h))
+                painter.drawEllipse(int(cx + ex - eye_w / 2), int(cy + ey - eye_h / 2 - tilt), int(eye_w), int(eye_h))
 
             def _palette(self, t: float):
                 if self.operation == "esperando":
@@ -181,10 +197,9 @@ class ScreenDisplay(BaseDisplay):
                 }.get(self.operation, 2.0)
 
             def _eye_shape(self, r: float, t: float) -> tuple[float, float]:
-                if self.emotion == "aburrido" and self.operation == "hablando":
-                    return r * 0.28, r * 0.07
-                if self.emotion == "enfadado" and self.operation == "hablando":
-                    return r * 0.22, r * 0.16
+                if self.operation == "hablando":
+                    mods = self._emotion_modifiers()
+                    return r * mods["eye_w"], r * mods["eye_h"]
                 if self.operation == "pensando":
                     return r * 0.18, r * 0.18
                 blink = 1.0
@@ -204,14 +219,15 @@ class ScreenDisplay(BaseDisplay):
                     painter.drawText(int(cx - r * 0.4), int(cy + r * 0.05), int(r * 0.8), int(r * 0.35), Qt.AlignCenter, dots)
                     return
                 if self.operation == "hablando":
+                    mods = self._emotion_modifiers()
                     width = r * 0.62
-                    amp = r * 0.045
+                    amp = r * mods["wave_amp"]
                     mid_y = cy + r * 0.30
                     points = []
                     for i in range(36):
                         x = cx - width / 2 + width * i / 35
-                        phase = (i / 35) * math.tau * 2.0
-                        y = mid_y + amp * math.sin(phase + t * 4.2) + amp * 0.45 * math.sin(phase * 2.3 - t * 2.1)
+                        phase = (i / 35) * math.tau * mods["wave_freq"]
+                        y = mid_y + amp * math.sin(phase + t * mods["wave_speed"]) + amp * mods["jitter"] * math.sin(phase * 2.3 - t * (mods["wave_speed"] * 0.55))
                         points.append(QPointF(x, y))
                     for a, b in zip(points, points[1:]):
                         painter.drawLine(a, b)
