@@ -1,5 +1,6 @@
 import os
 import tempfile
+import threading
 import time
 import wave
 
@@ -14,14 +15,15 @@ DEEPGRAM_API_KEY = config.DEEPGRAM_API_KEY
 WAKE_MODEL = config.WAKE_MODEL_PATH
 
 SAMPLE_RATE = 16000
-OWW_FRAME = 1280                # 80 ms — frame nativo de openWakeWord
-VAD_FRAME_MS = 20               # webrtcvad acepta 10/20/30 ms
-VAD_FRAME = SAMPLE_RATE * VAD_FRAME_MS // 1000  # 320 samples a 16kHz
+OWW_FRAME = 1280
+VAD_FRAME_MS = 20
+VAD_FRAME = SAMPLE_RATE * VAD_FRAME_MS // 1000
 WAKE_THRESHOLD = 0.3
 SILENCE_MS_TO_STOP = 400
 MIN_VOICE_MS = 300
 MAX_UTTERANCE_MS = 8000
 PUSH_TO_TALK_MAX_MS = int(os.getenv("PUSH_TO_TALK_MAX_MS", "12000"))
+PUSH_TO_TALK_MODE = os.getenv("PUSH_TO_TALK_MODE", "enter_stop").lower()
 
 _pa = None
 _stream = None
@@ -171,12 +173,34 @@ def _grabar_desde(frame_inicial=b""):
 
 
 def _grabar_manual(max_ms=PUSH_TO_TALK_MAX_MS):
+    if PUSH_TO_TALK_MODE in ("enter_stop", "manual_stop", "stop_enter"):
+        return _grabar_hasta_enter(max_ms=max_ms)
+
     luces.cambiar_estado("escuchando")
     buffer_audio = bytearray()
     inicio = time.time()
     print(f"🎙️ Grabando {max_ms // 1000}s como máximo. Habla ahora...")
 
     while (time.time() - inicio) * 1000 < max_ms:
+        buffer_audio += _leer_raw(VAD_FRAME)
+
+    return _guardar_wav(buffer_audio)
+
+
+def _grabar_hasta_enter(max_ms=PUSH_TO_TALK_MAX_MS):
+    luces.cambiar_estado("escuchando")
+    buffer_audio = bytearray()
+    stop_event = threading.Event()
+
+    def _wait_enter():
+        input("Pulsa ENTER otra vez para parar la grabación... ")
+        stop_event.set()
+
+    threading.Thread(target=_wait_enter, daemon=True).start()
+    inicio = time.time()
+    print(f"🎙️ Grabando. Habla ahora. Límite máximo: {max_ms // 1000}s.")
+
+    while not stop_event.is_set() and (time.time() - inicio) * 1000 < max_ms:
         buffer_audio += _leer_raw(VAD_FRAME)
 
     return _guardar_wav(buffer_audio)
@@ -214,7 +238,7 @@ def escuchar():
 
 
 def escuchar_push_to_talk():
-    input("\nPulsa ENTER y habla. Espera a que termine la grabación... ")
+    input("\nPulsa ENTER para empezar a grabar... ")
     wav = _grabar_manual()
     print("🧠 [Deepgram] Analizando...")
     return _transcribir_deepgram(wav)
