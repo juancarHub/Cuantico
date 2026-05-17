@@ -1,5 +1,4 @@
 import os
-import re
 import time
 import threading
 from datetime import datetime
@@ -10,6 +9,7 @@ import interaction_state
 import llm
 import luces
 import recuerdos
+from emotions import emotion_control_instructions, parse_emotion_and_text
 
 INPUT_MODE = os.getenv("INPUT_MODE", "voice").lower()
 micro = None
@@ -17,32 +17,8 @@ if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
     micro = _micro
 
-EMOCIONES_VALIDAS = {"sarcasmo", "enfadado", "cachondeo", "aburrido", "neutral"}
 
-
-def detectar_emocion(texto):
-    texto = texto.lower()
-    if any(w in texto for w in ["aburrido", "pesado", "tostón", "sueño", "cilindro", "sardina"]):
-        return "aburrido"
-    if any(w in texto for w in ["jaja", "risas", "broma", "chimichanga", "gracioso", "flipas", "bro", "brodi", "venga ya"]):
-        return "cachondeo"
-    if any(w in texto for w in ["odio", "basura", "muérete", "manda huevos", "impostora", "pringá"]):
-        return "enfadado"
-    return "sarcasmo"
-
-
-def extraer_emocion_y_texto(texto):
-    limpio = (texto or "").strip()
-    patron = r"^\s*\[?\s*emocion\s*[:=]\s*(sarcasmo|enfadado|cachondeo|aburrido|neutral)\s*\]?\s*\n?"
-    match = re.match(patron, limpio, flags=re.IGNORECASE)
-    if match:
-        emocion = match.group(1).lower()
-        texto_limpio = limpio[match.end():].strip()
-        return emocion, texto_limpio
-    return detectar_emocion(limpio), limpio
-
-
-SYSTEM_PROMPT = """Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
+SYSTEM_PROMPT = f"""Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
 
 PERSONALIDAD:
 - Deadpool pasado por España: sarcasmo afilado, arrogante, bromista y un poco teatrero.
@@ -61,15 +37,7 @@ MEMORIA PERSISTENTE:
 - No guardes datos sensibles.
 
 EMOCIÓN:
-- Empieza SIEMPRE tu respuesta con una línea de control no narrativa:
-  emocion: sarcasmo
-  emocion: enfadado
-  emocion: cachondeo
-  emocion: aburrido
-  emocion: neutral
-- Elige sólo una de esas cinco.
-- Después de esa línea, escribe la respuesta normal.
-- Si el usuario pide explícitamente un tono emocional, respeta ese tono aunque mencione Alexa, Siri u otros asistentes.
+{emotion_control_instructions()}
 
 FORMATO:
 - Máximo 2 frases. Breve, con carácter, fácil de decir por TTS.
@@ -108,28 +76,16 @@ def _leer_usuario_seguimiento(timeout_ms=8000):
 
 
 def recordar(hecho: str, categoria: str = "") -> str:
-    """Guarda un hecho estable sobre el usuario para futuras conversaciones.
-
-    Args:
-        hecho: Frase corta en tercera persona.
-        categoria: Etiqueta corta opcional.
-    """
     rid = recuerdos.añadir(hecho, categoria)
     return f"ok: recordado con id {rid}" if rid else "fallo: no se pudo guardar"
 
 
 def olvidar(coincidencia: str) -> str:
-    """Borra recuerdos que contengan la frase indicada.
-
-    Args:
-        coincidencia: Fragmento de texto a buscar en los recuerdos guardados.
-    """
     n = recuerdos.borrar_por_coincidencia(coincidencia)
     return f"ok: olvidados {n} recuerdo(s)" if n else "fallo: no encontré recuerdo con eso"
 
 
 def listar_recuerdos() -> str:
-    """Devuelve los recuerdos guardados sobre el usuario."""
     items = recuerdos.listar(50)
     if not items:
         return "no tengo recuerdos guardados todavía"
@@ -204,7 +160,7 @@ try:
                 response = chat.send_message(texto_usuario)
                 texto_respuesta = (response.text or "").strip()
                 if texto_respuesta:
-                    emocion_ia, texto_limpio = extraer_emocion_y_texto(texto_respuesta)
+                    emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
                     print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
                     _hablar(texto_limpio, emocion_ia)
             except Exception as e:
