@@ -13,6 +13,15 @@ WAKE_THRESHOLD = 0.3
 SILENCE_MS_TO_STOP = 400
 MIN_VOICE_MS = 300
 MAX_UTTERANCE_MS = 8000
+TAP_START_MODES = {
+    "tap_stop",
+    "screen_tap",
+    "touch_stop",
+    "tap_or_silence",
+    "screen_tap_or_silence",
+    "touch_or_silence",
+    "auto_stop",
+}
 
 _audio_input = AudioInput()
 _stt_provider = create_stt()
@@ -113,7 +122,7 @@ def escuchar():
 
 
 def escuchar_push_to_talk():
-    if PUSH_TO_TALK_MODE in ("tap_stop", "screen_tap", "touch_stop"):
+    if PUSH_TO_TALK_MODE in TAP_START_MODES:
         print("\nToca la cara para empezar a grabar...")
         ui_events.wait_for("screen_tap")
     else:
