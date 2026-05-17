@@ -193,7 +193,7 @@ class ScreenDisplay(BaseDisplay):
                 return r * 0.22, r * 0.22 * blink
 
             def _draw_mouth(self, painter, cx: float, cy: float, r: float, t: float) -> None:
-                from PySide6.QtCore import QRectF
+                from PySide6.QtCore import QRectF, QPointF
 
                 if self.operation == "escuchando":
                     painter.drawEllipse(int(cx - r * 0.13), int(cy + r * 0.22), int(r * 0.26), int(r * 0.18))
@@ -204,8 +204,17 @@ class ScreenDisplay(BaseDisplay):
                     painter.drawText(int(cx - r * 0.4), int(cy + r * 0.05), int(r * 0.8), int(r * 0.35), Qt.AlignCenter, dots)
                     return
                 if self.operation == "hablando":
-                    openness = 0.10 + 0.08 * abs(math.sin(t * 5.2))
-                    painter.drawEllipse(int(cx - r * 0.18), int(cy + r * 0.22), int(r * 0.36), int(r * openness))
+                    width = r * 0.62
+                    amp = r * 0.045
+                    mid_y = cy + r * 0.30
+                    points = []
+                    for i in range(36):
+                        x = cx - width / 2 + width * i / 35
+                        phase = (i / 35) * math.tau * 2.0
+                        y = mid_y + amp * math.sin(phase + t * 4.2) + amp * 0.45 * math.sin(phase * 2.3 - t * 2.1)
+                        points.append(QPointF(x, y))
+                    for a, b in zip(points, points[1:]):
+                        painter.drawLine(a, b)
                     return
                 if self.operation == "apagado":
                     painter.drawLine(int(cx - r * 0.18), int(cy + r * 0.28), int(cx + r * 0.18), int(cy + r * 0.28))
