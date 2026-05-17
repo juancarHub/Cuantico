@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import threading
 from datetime import datetime
@@ -16,17 +17,29 @@ if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
     micro = _micro
 
+EMOCIONES_VALIDAS = {"sarcasmo", "enfadado", "cachondeo", "aburrido", "neutral"}
 
 
 def detectar_emocion(texto):
     texto = texto.lower()
-    if any(w in texto for w in ["odio", "alexa", "siri", "basura", "muérete", "manda huevos", "impostora", "pringá"]):
-        return "enfadado"
-    if any(w in texto for w in ["jaja", "risas", "broma", "chimichanga", "gracioso", "flipas", "bro", "brodi", "venga ya"]):
-        return "cachondeo"
     if any(w in texto for w in ["aburrido", "pesado", "tostón", "sueño", "cilindro", "sardina"]):
         return "aburrido"
+    if any(w in texto for w in ["jaja", "risas", "broma", "chimichanga", "gracioso", "flipas", "bro", "brodi", "venga ya"]):
+        return "cachondeo"
+    if any(w in texto for w in ["odio", "basura", "muérete", "manda huevos", "impostora", "pringá"]):
+        return "enfadado"
     return "sarcasmo"
+
+
+def extraer_emocion_y_texto(texto):
+    limpio = (texto or "").strip()
+    patron = r"^\s*\[?\s*emocion\s*[:=]\s*(sarcasmo|enfadado|cachondeo|aburrido|neutral)\s*\]?\s*\n?"
+    match = re.match(patron, limpio, flags=re.IGNORECASE)
+    if match:
+        emocion = match.group(1).lower()
+        texto_limpio = limpio[match.end():].strip()
+        return emocion, texto_limpio
+    return detectar_emocion(limpio), limpio
 
 
 SYSTEM_PROMPT = """Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
@@ -46,6 +59,17 @@ MEMORIA PERSISTENTE:
 - Usa la tool `recordar(hecho, categoria)` cuando el usuario diga algo estable y útil para el futuro.
 - Usa `olvidar` si el usuario pide borrar algo.
 - No guardes datos sensibles.
+
+EMOCIÓN:
+- Empieza SIEMPRE tu respuesta con una línea de control no narrativa:
+  emocion: sarcasmo
+  emocion: enfadado
+  emocion: cachondeo
+  emocion: aburrido
+  emocion: neutral
+- Elige sólo una de esas cinco.
+- Después de esa línea, escribe la respuesta normal.
+- Si el usuario pide explícitamente un tono emocional, respeta ese tono aunque mencione Alexa, Siri u otros asistentes.
 
 FORMATO:
 - Máximo 2 frases. Breve, con carácter, fácil de decir por TTS.
@@ -180,9 +204,9 @@ try:
                 response = chat.send_message(texto_usuario)
                 texto_respuesta = (response.text or "").strip()
                 if texto_respuesta:
-                    emocion_ia = detectar_emocion(texto_respuesta)
-                    print(f"🤖 Cuántico: {texto_respuesta}")
-                    _hablar(texto_respuesta, emocion_ia)
+                    emocion_ia, texto_limpio = extraer_emocion_y_texto(texto_respuesta)
+                    print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
+                    _hablar(texto_limpio, emocion_ia)
             except Exception as e:
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
