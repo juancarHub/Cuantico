@@ -28,7 +28,7 @@ def detectar_emocion(texto):
     return "sarcasmo"
 
 
-SYSTEM_PROMPT = """Eres Lucas, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
+SYSTEM_PROMPT = """Eres Cuantico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
 
 PERSONALIDAD:
 - Deadpool pasado por España: sarcasmo afilado, arrogante, bromista y un poco teatrero.
