@@ -8,6 +8,7 @@ import numpy as np
 import pyaudio
 
 import luces
+import ui_events
 
 SAMPLE_RATE = 16000
 OWW_FRAME = 1280
@@ -147,7 +148,28 @@ class AudioInput:
 
         return self.guardar_wav(buffer_audio)
 
+    def grabar_hasta_tap(self, max_ms=PUSH_TO_TALK_MAX_MS):
+        luces.cambiar_estado("escuchando")
+        buffer_audio = bytearray()
+        stop_event = threading.Event()
+
+        def _wait_tap():
+            print("Toca la cara otra vez para parar la grabación...")
+            ui_events.wait_for("screen_tap")
+            stop_event.set()
+
+        threading.Thread(target=_wait_tap, daemon=True).start()
+        inicio = time.time()
+        print(f"🎙️ Grabando por tap. Habla ahora. Límite máximo: {max_ms // 1000}s.")
+
+        while not stop_event.is_set() and (time.time() - inicio) * 1000 < max_ms:
+            buffer_audio += self.leer_raw(VAD_FRAME)
+
+        return self.guardar_wav(buffer_audio)
+
     def grabar_manual(self, max_ms=PUSH_TO_TALK_MAX_MS):
+        if PUSH_TO_TALK_MODE in ("tap_stop", "screen_tap", "touch_stop"):
+            return self.grabar_hasta_tap(max_ms=max_ms)
         if PUSH_TO_TALK_MODE in ("enter_stop", "manual_stop", "stop_enter"):
             return self.grabar_hasta_enter(max_ms=max_ms)
         return self.grabar_fijo(max_ms=max_ms)
