@@ -5,6 +5,7 @@ from datetime import datetime
 
 import altavoz
 import config
+import interaction_state
 import llm
 import luces
 import recuerdos
@@ -28,7 +29,7 @@ def detectar_emocion(texto):
     return "sarcasmo"
 
 
-SYSTEM_PROMPT = """Eres Cuantico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
+SYSTEM_PROMPT = """Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
 
 PERSONALIDAD:
 - Deadpool pasado por España: sarcasmo afilado, arrogante, bromista y un poco teatrero.
@@ -57,7 +58,10 @@ _tts_lock = threading.Lock()
 
 def _hablar(texto, emocion):
     with _tts_lock:
+        interaction_state.set_state("speaking")
         altavoz.hablar(texto, emocion)
+        luces.cambiar_estado("esperando")
+        interaction_state.set_state("idle")
 
 
 def _leer_usuario_inicial():
@@ -120,6 +124,7 @@ _provider = llm.create_provider()
 print(f"🧠 LLM provider activo: {_provider.name}")
 
 luces.encender_reactor()
+interaction_state.set_state("idle")
 recuerdos.inicializar()
 
 SYSTEM_PROMPT += f"\n\nFECHA ACTUAL DE REFERENCIA: {datetime.now().strftime('%Y-%m-%d %A %H:%M')} (zona horaria Europe/Madrid)."
@@ -138,6 +143,7 @@ elif INPUT_MODE in ("push_to_talk", "ptt"):
 try:
     while True:
         luces.cambiar_estado("esperando")
+        interaction_state.set_state("idle")
         texto_usuario = _leer_usuario_inicial()
         chat = _provider.create_chat(_prompt_con_memoria(), TOOLS)
 
@@ -166,6 +172,7 @@ try:
                 continue
 
             luces.cambiar_estado("pensando")
+            interaction_state.set_state("processing")
             print("🤖 Cuántico está procesando...")
 
             try:
@@ -175,7 +182,6 @@ try:
                     emocion_ia = detectar_emocion(texto_respuesta)
                     print(f"🤖 Cuántico: {texto_respuesta}")
                     _hablar(texto_respuesta, emocion_ia)
-                    luces.cambiar_estado(emocion_ia)
             except Exception as e:
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
