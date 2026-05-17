@@ -1,3 +1,4 @@
+import os
 import time
 import threading
 from datetime import datetime
@@ -6,8 +7,13 @@ import altavoz
 import config
 import llm
 import luces
-import micro
 import recuerdos
+
+INPUT_MODE = os.getenv("INPUT_MODE", "voice").lower()
+micro = None
+if INPUT_MODE == "voice":
+    import micro as _micro
+    micro = _micro
 
 
 def detectar_emocion(texto):
@@ -30,7 +36,7 @@ PERSONALIDAD:
 - Tienes un lado cariñoso escondido: vacilas, pero en el fondo acompañas.
 
 CONTEXTO:
-- Cada mensaje que recibes lo ha dicho Fran en voz alta y Deepgram lo ha transcrito. Puede traer errores, palabras cortadas o frases raras. Intenta reconstruir intención antes de pedir repetir.
+- Cada mensaje que recibes lo ha dicho Fran. Si viene de voz, Deepgram lo ha transcrito y puede traer errores.
 - En este modo mínimo NO tienes Spotify, Govee, calendario, YouTube ni llamadas. Sólo puedes conversar, recordar hechos simples y hablar por voz.
 
 MEMORIA PERSISTENTE:
@@ -51,6 +57,20 @@ _tts_lock = threading.Lock()
 def _hablar(texto, emocion):
     with _tts_lock:
         altavoz.hablar(texto, emocion)
+
+
+def _leer_usuario_inicial():
+    if INPUT_MODE == "text":
+        luces.cambiar_estado("escuchando")
+        return input("\n👤 Fran > ").strip()
+    return micro.escuchar()
+
+
+def _leer_usuario_seguimiento(timeout_ms=8000):
+    if INPUT_MODE == "text":
+        luces.cambiar_estado("escuchando")
+        return input("\n👤 Fran > ").strip()
+    return micro.escuchar_seguimiento(timeout_ms=timeout_ms)
 
 
 def recordar(hecho: str, categoria: str = "") -> str:
@@ -89,6 +109,7 @@ print("==================================================")
 print("  🚀 CUÁNTICO MINIMAL: VOZ + CARA + LLM ")
 print("==================================================")
 print(f"🧠 Provider configurado: {config.LLM_PROVIDER}")
+print(f"🎙️ Input mode: {INPUT_MODE}")
 
 _provider = llm.create_provider()
 print(f"🧠 LLM provider activo: {_provider.name}")
@@ -104,19 +125,20 @@ def _prompt_con_memoria() -> str:
     return SYSTEM_PROMPT + ("\n\n" + bloque if bloque else "")
 
 
-micro.inicializar()
+if INPUT_MODE == "voice":
+    micro.inicializar()
 
 try:
     while True:
         luces.cambiar_estado("esperando")
-        texto_usuario = micro.escuchar()
+        texto_usuario = _leer_usuario_inicial()
         chat = _provider.create_chat(_prompt_con_memoria(), TOOLS)
 
         en_conversacion = True
         while en_conversacion:
             if not texto_usuario or texto_usuario.strip() == "":
                 print("☁️ No he entendido nada.")
-                texto_usuario = micro.escuchar_seguimiento(timeout_ms=5000)
+                texto_usuario = _leer_usuario_seguimiento(timeout_ms=5000)
                 if not texto_usuario:
                     en_conversacion = False
                 continue
@@ -151,12 +173,13 @@ try:
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 _hablar("Se me ha atragantado una neurona, Fran. Repite eso.", "enfadado")
 
-            texto_usuario = micro.escuchar_seguimiento(timeout_ms=8000)
+            texto_usuario = _leer_usuario_seguimiento(timeout_ms=8000)
 
 except KeyboardInterrupt:
     print("\n🛑 Desconexión manual detectada.")
 finally:
-    micro.cerrar()
+    if INPUT_MODE == "voice":
+        micro.cerrar()
     luces.apagar_reactor()
     time.sleep(0.5)
     print("Cuántico minimal fuera.")
