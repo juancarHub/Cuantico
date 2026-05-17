@@ -59,6 +59,7 @@ _tts_lock = threading.Lock()
 def _hablar(texto, emocion):
     with _tts_lock:
         interaction_state.set_state("speaking")
+        luces.cambiar_estado(f"hablando:{emocion}")
         altavoz.hablar(texto, emocion)
         luces.cambiar_estado("esperando")
         interaction_state.set_state("idle")
