@@ -13,6 +13,9 @@ import luces
 
 DEEPGRAM_API_KEY = config.DEEPGRAM_API_KEY
 WAKE_MODEL = config.WAKE_MODEL_PATH
+STT_PROVIDER = os.getenv("STT_PROVIDER", "deepgram").lower()
+OPENAI_STT_MODEL = os.getenv("OPENAI_STT_MODEL", "gpt-4o-mini-transcribe")
+OPENAI_STT_LANGUAGE = os.getenv("OPENAI_STT_LANGUAGE", "es")
 
 SAMPLE_RATE = 16000
 OWW_FRAME = 1280
@@ -212,20 +215,42 @@ def _transcribir_deepgram(path):
         "Authorization": f"Token {DEEPGRAM_API_KEY}",
         "Content-Type": "audio/wav",
     }
-    try:
-        with open(path, "rb") as audio:
-            response = requests.post(url, headers=headers, data=audio, timeout=10)
+    with open(path, "rb") as audio:
+        response = requests.post(url, headers=headers, data=audio, timeout=10)
 
+    if response.status_code == 200:
+        return response.json()['results']['channels'][0]['alternatives'][0]['transcript']
+    print(f"⚠️ Error Deepgram: {response.status_code} {response.text[:160]}")
+    return ""
+
+
+def _transcribir_openai(path):
+    from openai import OpenAI
+
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+    with open(path, "rb") as audio:
+        result = client.audio.transcriptions.create(
+            model=OPENAI_STT_MODEL,
+            file=audio,
+            language=OPENAI_STT_LANGUAGE,
+        )
+    return (result.text or "").strip()
+
+
+def _transcribir(path):
+    print(f"🧠 [STT:{STT_PROVIDER}] Analizando...")
+    try:
+        if STT_PROVIDER == "openai":
+            return _transcribir_openai(path)
+        if STT_PROVIDER in ("deepgram", "dg"):
+            return _transcribir_deepgram(path)
+        raise RuntimeError(f"STT_PROVIDER no soportado: {STT_PROVIDER}")
+    except Exception as e:
+        print(f"⚠️ Error STT ({STT_PROVIDER}): {e}")
+        return ""
+    finally:
         if os.path.exists(path):
             os.remove(path)
-
-        if response.status_code == 200:
-            return response.json()['results']['channels'][0]['alternatives'][0]['transcript']
-        print(f"⚠️ Error Deepgram: {response.status_code} {response.text[:160]}")
-        return ""
-    except Exception as e:
-        print(f"⚠️ Error de conexión: {e}")
-        return ""
 
 
 def escuchar():
@@ -233,15 +258,13 @@ def escuchar():
     _esperar_wake()
     print("🎤 [Wake] ¡Despierto! Escuchando tu petición...")
     wav = _grabar_desde()
-    print("🧠 [Deepgram] Analizando...")
-    return _transcribir_deepgram(wav)
+    return _transcribir(wav)
 
 
 def escuchar_push_to_talk():
     input("\nPulsa ENTER para empezar a grabar... ")
     wav = _grabar_manual()
-    print("🧠 [Deepgram] Analizando...")
-    return _transcribir_deepgram(wav)
+    return _transcribir(wav)
 
 
 def escuchar_seguimiento(timeout_ms=8000):
@@ -256,8 +279,7 @@ def escuchar_seguimiento(timeout_ms=8000):
         return None
     print("🎤 Voz captada, grabando...")
     wav = _grabar_desde(frame)
-    print("🧠 [Deepgram] Analizando...")
-    return _transcribir_deepgram(wav)
+    return _transcribir(wav)
 
 
 def cerrar():
