@@ -4,7 +4,8 @@ import time
 import numpy as np
 
 import config
-from audio.input import AudioInput, SAMPLE_RATE, VAD_FRAME, VAD_FRAME_MS
+import ui_events
+from audio.input import AudioInput, SAMPLE_RATE, VAD_FRAME, VAD_FRAME_MS, PUSH_TO_TALK_MODE
 from stt import create_stt
 
 WAKE_MODEL = config.WAKE_MODEL_PATH
@@ -112,7 +113,12 @@ def escuchar():
 
 
 def escuchar_push_to_talk():
-    input("\nPulsa ENTER para empezar a grabar... ")
+    if PUSH_TO_TALK_MODE in ("tap_stop", "screen_tap", "touch_stop"):
+        print("\nToca la cara para empezar a grabar...")
+        ui_events.wait_for("screen_tap")
+    else:
+        input("\nPulsa ENTER para empezar a grabar... ")
+
     wav = _audio_input.grabar_manual()
     return _transcribir(wav)
 
