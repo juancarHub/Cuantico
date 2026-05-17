@@ -38,10 +38,20 @@ class DeepgramSTT(BaseSTT):
                 f"Deepgram {response.status_code}: {response.text[:160]}"
             )
 
-        return (
-            response.json()["results"]
-            ["channels"][0]
-            ["alternatives"][0]
-            ["transcript"]
-            .strip()
-        )
+        data = response.json()
+
+        try:
+            channels = data.get("results", {}).get("channels", [])
+            if not channels:
+                return ""
+
+            alternatives = channels[0].get("alternatives", [])
+            if not alternatives:
+                return ""
+
+            transcript = alternatives[0].get("transcript", "")
+            return transcript.strip()
+
+        except Exception as exc:
+            print(f"⚠️ Respuesta Deepgram inesperada: {exc}")
+            return ""
