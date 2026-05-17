@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import interaction_state
 import ui_events
 
 from .base import BaseDisplay
@@ -89,7 +90,8 @@ class ScreenDisplay(BaseDisplay):
                     QApplication.quit()
 
             def mousePressEvent(self, event) -> None:
-                ui_events.publish("screen_tap")
+                if interaction_state.is_tap_allowed():
+                    ui_events.publish("screen_tap")
                 event.accept()
 
             def paintEvent(self, event) -> None:
