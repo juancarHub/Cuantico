@@ -1,6 +1,5 @@
 import os
 
-import luces
 from audio.output import AudioOutput
 from tts import create_tts
 
@@ -53,7 +52,6 @@ def _encontrar_corte(buffer):
 
 
 def hablar(texto, emocion):
-    luces.cambiar_estado(emocion)
     print(f"🔊 [Altavoz] Escupiendo audio ({emocion})...")
 
     if _audio_output.use_file_backend():
@@ -63,7 +61,6 @@ def hablar(texto, emocion):
 
 
 def hablar_stream(generador_texto, emocion="sarcasmo"):
-    luces.cambiar_estado(emocion)
     print(f"🔊 [Altavoz] Streaming paralelo ({emocion})...")
 
     buffer = ""
