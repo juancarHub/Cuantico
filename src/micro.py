@@ -6,8 +6,6 @@ import wave
 import numpy as np
 import pyaudio
 import requests
-import webrtcvad
-from openwakeword.model import Model
 
 import config
 import luces
@@ -29,11 +27,10 @@ _pa = None
 _stream = None
 _oww = None
 _vad = None
-_capture_rate = SAMPLE_RATE   # sample rate real del hardware (puede ser 48000 si el device no soporta 16k)
+_capture_rate = SAMPLE_RATE
 
 
 def _encontrar_dispositivo():
-    # Orden de preferencia: I2S (INMP441 vía dtoverlay), USB, Google VoiceHAT, cualquier otro.
     preferidos = ("i2s", "snd_rpi_simple", "snd-i2s", "inmp441",
                   "usb", "voicehat", "googlevoice", "snd_rpi_google")
     candidatos = []
@@ -58,7 +55,6 @@ def _encontrar_dispositivo():
 
 
 def _abrir_stream(idx):
-    """Intenta abrir el stream a 16k; si el HW no lo soporta, cae a 48k."""
     global _capture_rate
     for rate in (16000, 48000):
         try:
@@ -80,7 +76,6 @@ def _abrir_stream(idx):
 
 
 def _leer_raw(samples_16k):
-    """Devuelve bytes PCM16 equivalentes a `samples_16k` muestras a 16 kHz."""
     factor = _capture_rate // SAMPLE_RATE
     raw = _stream.read(samples_16k * factor, exception_on_overflow=False)
     if factor == 1:
@@ -91,16 +86,19 @@ def _leer_raw(samples_16k):
 
 def inicializar(use_wake_word=True):
     global _pa, _stream, _oww, _vad
-    _vad = webrtcvad.Vad(2)
     _pa = pyaudio.PyAudio()
     _stream = _abrir_stream(_encontrar_dispositivo())
 
     if use_wake_word:
+        import webrtcvad
+        from openwakeword.model import Model
+
+        _vad = webrtcvad.Vad(2)
         print("🦻 Cargando openWakeWord...")
         _oww = Model(wakeword_models=[WAKE_MODEL], inference_framework="onnx")
         print("✅ Micro en modo radar: escuchando wake word.")
     else:
-        print("✅ Micro en modo push-to-talk/manual.")
+        print("✅ Micro en modo push-to-talk/manual sin VAD ni wake word.")
 
 
 def _esperar_wake():
@@ -121,7 +119,8 @@ def _esperar_wake():
 
 
 def _esperar_voz(timeout_ms):
-    """Espera hasta que se detecte voz. Devuelve el primer frame con voz o None si pasa el timeout."""
+    if _vad is None:
+        return None
     ms_esperados = 0
     while ms_esperados < timeout_ms:
         frame = _leer_raw(VAD_FRAME)
@@ -144,7 +143,9 @@ def _guardar_wav(buffer_audio):
 
 
 def _grabar_desde(frame_inicial=b""):
-    """Graba con VAD. Opcionalmente arranca con un frame ya capturado."""
+    if _vad is None:
+        return _grabar_manual()
+
     luces.cambiar_estado("escuchando")
     buffer_audio = bytearray(frame_inicial)
     silencio_ms = 0
@@ -170,7 +171,6 @@ def _grabar_desde(frame_inicial=b""):
 
 
 def _grabar_manual(max_ms=PUSH_TO_TALK_MAX_MS):
-    """Graba audio bruto durante max_ms; útil para push-to-talk sin wake word."""
     luces.cambiar_estado("escuchando")
     buffer_audio = bytearray()
     inicio = time.time()
@@ -205,7 +205,6 @@ def _transcribir_deepgram(path):
 
 
 def escuchar():
-    """Espera wake word, graba y transcribe. Usar al inicio de cada conversación."""
     print("💤 En reposo. Di la wake word para despertarme...")
     _esperar_wake()
     print("🎤 [Wake] ¡Despierto! Escuchando tu petición...")
@@ -215,7 +214,6 @@ def escuchar():
 
 
 def escuchar_push_to_talk():
-    """Pulsa Enter, graba una frase y transcribe con Deepgram."""
     input("\nPulsa ENTER y habla. Espera a que termine la grabación... ")
     wav = _grabar_manual()
     print("🧠 [Deepgram] Analizando...")
@@ -223,7 +221,9 @@ def escuchar_push_to_talk():
 
 
 def escuchar_seguimiento(timeout_ms=8000):
-    """Escucha sin wake word, con timeout. Devuelve None si no se detecta voz."""
+    if _vad is None:
+        return escuchar_push_to_talk()
+
     print(f"👂 ¿Algo más? ({timeout_ms//1000}s)...")
     luces.cambiar_estado("escuchando")
     frame = _esperar_voz(timeout_ms)
