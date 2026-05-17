@@ -13,13 +13,12 @@ import ui_events
 from .base import BaseDisplay
 
 
-class ScreenDisplay(BaseDisplay):
-    """Backend visual de pantalla para tablet/Windows.
+EMOTIONS = {"sarcasmo", "enfadado", "cachondeo", "aburrido", "neutral"}
+OPERATIONS = {"esperando", "escuchando", "pensando", "hablando", "apagado"}
 
-    Lanza una ventana PySide6 en un hilo dedicado y recibe cambios de estado
-    mediante una cola thread-safe. El resto del asistente sigue usando la API
-    clásica de luces.py.
-    """
+
+class ScreenDisplay(BaseDisplay):
+    """Backend visual de pantalla para tablet/Windows."""
 
     def __init__(self) -> None:
         self._state = "esperando"
@@ -62,7 +61,8 @@ class ScreenDisplay(BaseDisplay):
             def __init__(self, events: queue.Queue[str]) -> None:
                 super().__init__()
                 self.events = events
-                self.state = "esperando"
+                self.operation = "esperando"
+                self.emotion = "neutral"
                 self.t0 = time.time()
                 self.setWindowTitle("Cuántico")
                 self.resize(760, 520)
@@ -82,8 +82,30 @@ class ScreenDisplay(BaseDisplay):
                     if event == "__quit__":
                         QApplication.quit()
                         return
-                    self.state = event
+                    self._apply_state(event)
                 self.update()
+
+            def _apply_state(self, state: str) -> None:
+                if ":" in state:
+                    op, emotion = state.split(":", 1)
+                    if op in OPERATIONS:
+                        self.operation = op
+                    if emotion in EMOTIONS:
+                        self.emotion = emotion
+                    return
+
+                if state in OPERATIONS:
+                    self.operation = state
+                    if state == "esperando":
+                        self.emotion = "neutral"
+                    return
+
+                if state in EMOTIONS:
+                    self.emotion = state
+                    return
+
+                self.operation = "esperando"
+                self.emotion = "neutral"
 
             def keyPressEvent(self, event) -> None:
                 if event.key() in (Qt.Key_Escape, Qt.Key_Q):
@@ -128,23 +150,25 @@ class ScreenDisplay(BaseDisplay):
 
                 painter.setPen(QPen(QColor(220, 220, 220, 190), 1))
                 painter.setFont(QFont("Arial", max(12, int(r * 0.10))))
-                painter.drawText(0, int(h - r * 0.28), w, int(r * 0.2), Qt.AlignCenter, self.state.upper())
+                painter.drawText(0, int(h - r * 0.28), w, int(r * 0.2), Qt.AlignCenter, self.operation.upper())
 
             def _palette(self, t: float):
-                if self.state == "esperando":
+                if self.operation == "esperando":
                     return (3, 20, 8), (72, 150, 65), (235, 255, 230), (235, 255, 230)
-                if self.state == "escuchando":
+                if self.operation == "escuchando":
                     return (5, 20, 32), (30, 180, 230), (230, 255, 255), (230, 255, 255)
-                if self.state == "pensando":
+                if self.operation == "pensando":
                     pulse = int(35 + 20 * math.sin(t * 6))
                     return (pulse, 18, 0), (255, 160, 30), (30, 20, 10), (30, 20, 10)
-                if self.state == "enfadado":
-                    return (34, 0, 0), (230, 30, 30), (20, 0, 0), (20, 0, 0)
-                if self.state == "cachondeo":
-                    return (24, 4, 35), (210, 80, 240), (255, 255, 255), (255, 255, 255)
-                if self.state == "aburrido":
-                    return (8, 6, 20), (90, 80, 150), (20, 20, 40), (20, 20, 40)
-                if self.state == "apagado":
+                if self.operation == "hablando":
+                    if self.emotion == "enfadado":
+                        return (34, 0, 0), (230, 30, 30), (20, 0, 0), (20, 0, 0)
+                    if self.emotion == "cachondeo":
+                        return (24, 4, 35), (210, 80, 240), (255, 255, 255), (255, 255, 255)
+                    if self.emotion == "aburrido":
+                        return (8, 6, 20), (90, 80, 150), (20, 20, 40), (20, 20, 40)
+                    return (18, 0, 0), (200, 40, 40), (255, 230, 230), (255, 230, 230)
+                if self.operation == "apagado":
                     return (0, 0, 0), (25, 25, 25), (5, 5, 5), (5, 5, 5)
                 return (3, 20, 8), (72, 150, 65), (235, 255, 230), (235, 255, 230)
 
@@ -152,18 +176,16 @@ class ScreenDisplay(BaseDisplay):
                 return {
                     "escuchando": 4.0,
                     "pensando": 7.0,
-                    "enfadado": 11.0,
-                    "cachondeo": 5.5,
-                    "aburrido": 1.0,
+                    "hablando": 6.5,
                     "apagado": 0.3,
-                }.get(self.state, 2.0)
+                }.get(self.operation, 2.0)
 
             def _eye_shape(self, r: float, t: float) -> tuple[float, float]:
-                if self.state == "aburrido":
+                if self.emotion == "aburrido" and self.operation == "hablando":
                     return r * 0.28, r * 0.07
-                if self.state == "enfadado":
+                if self.emotion == "enfadado" and self.operation == "hablando":
                     return r * 0.22, r * 0.16
-                if self.state == "pensando":
+                if self.operation == "pensando":
                     return r * 0.18, r * 0.18
                 blink = 1.0
                 if int(t * 2.4) % 11 == 0:
@@ -173,30 +195,24 @@ class ScreenDisplay(BaseDisplay):
             def _draw_mouth(self, painter, cx: float, cy: float, r: float, t: float) -> None:
                 from PySide6.QtCore import QRectF
 
-                if self.state == "escuchando":
+                if self.operation == "escuchando":
                     painter.drawEllipse(int(cx - r * 0.13), int(cy + r * 0.22), int(r * 0.26), int(r * 0.18))
                     return
-                if self.state == "pensando":
+                if self.operation == "pensando":
                     dots = "." * (1 + int(t * 3) % 3)
                     painter.setFont(QFont("Arial", max(20, int(r * 0.28)), QFont.Bold))
                     painter.drawText(int(cx - r * 0.4), int(cy + r * 0.05), int(r * 0.8), int(r * 0.35), Qt.AlignCenter, dots)
                     return
-                if self.state == "enfadado":
-                    painter.drawLine(int(cx - r * 0.28), int(cy + r * 0.34), int(cx + r * 0.28), int(cy + r * 0.24))
+                if self.operation == "hablando":
+                    openness = 0.12 + 0.12 * abs(math.sin(t * 13))
+                    painter.drawEllipse(int(cx - r * 0.20), int(cy + r * 0.22), int(r * 0.40), int(r * openness))
                     return
-                if self.state == "aburrido":
-                    painter.drawLine(int(cx - r * 0.22), int(cy + r * 0.30), int(cx + r * 0.22), int(cy + r * 0.30))
-                    return
-                if self.state == "apagado":
+                if self.operation == "apagado":
                     painter.drawLine(int(cx - r * 0.18), int(cy + r * 0.28), int(cx + r * 0.18), int(cy + r * 0.28))
                     return
 
                 rect = QRectF(cx - r * 0.35, cy + r * 0.06, r * 0.70, r * 0.42)
-                start = 200 * 16
-                span = 140 * 16
-                if self.state == "cachondeo":
-                    span = 165 * 16
-                painter.drawArc(rect, start, span)
+                painter.drawArc(rect, 200 * 16, 140 * 16)
 
         widget = FaceWidget(self._events)
         if display_mode in ("fullscreen", "full", "tablet"):
