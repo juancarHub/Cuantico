@@ -11,7 +11,7 @@ import recuerdos
 
 INPUT_MODE = os.getenv("INPUT_MODE", "voice").lower()
 micro = None
-if INPUT_MODE == "voice":
+if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
     micro = _micro
 
@@ -63,6 +63,8 @@ def _leer_usuario_inicial():
     if INPUT_MODE == "text":
         luces.cambiar_estado("escuchando")
         return input("\n👤 Fran > ").strip()
+    if INPUT_MODE in ("push_to_talk", "ptt"):
+        return micro.escuchar_push_to_talk()
     return micro.escuchar()
 
 
@@ -70,6 +72,8 @@ def _leer_usuario_seguimiento(timeout_ms=8000):
     if INPUT_MODE == "text":
         luces.cambiar_estado("escuchando")
         return input("\n👤 Fran > ").strip()
+    if INPUT_MODE in ("push_to_talk", "ptt"):
+        return micro.escuchar_push_to_talk()
     return micro.escuchar_seguimiento(timeout_ms=timeout_ms)
 
 
@@ -126,7 +130,9 @@ def _prompt_con_memoria() -> str:
 
 
 if INPUT_MODE == "voice":
-    micro.inicializar()
+    micro.inicializar(use_wake_word=True)
+elif INPUT_MODE in ("push_to_talk", "ptt"):
+    micro.inicializar(use_wake_word=False)
 
 try:
     while True:
@@ -178,7 +184,7 @@ try:
 except KeyboardInterrupt:
     print("\n🛑 Desconexión manual detectada.")
 finally:
-    if INPUT_MODE == "voice":
+    if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
         micro.cerrar()
     luces.apagar_reactor()
     time.sleep(0.5)
