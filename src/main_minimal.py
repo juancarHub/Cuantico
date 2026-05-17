@@ -37,13 +37,13 @@ PERSONALIDAD:
 - Tienes un lado cariñoso escondido: vacilas, pero en el fondo acompañas.
 
 CONTEXTO:
-- Cada mensaje que recibes lo ha dicho Juancar. Si viene de voz, Deepgram lo ha transcrito y puede traer errores.
+- Cada mensaje que recibes lo ha dicho el usuario. Si viene de voz, el STT lo ha transcrito y puede traer errores.
 - En este modo mínimo NO tienes Spotify, Govee, calendario, YouTube ni llamadas. Sólo puedes conversar, recordar hechos simples y hablar por voz.
 
 MEMORIA PERSISTENTE:
-- Tienes memoria entre conversaciones. Los recuerdos existentes aparecen en el bloque "RECUERDOS DE FRAN" si existe.
-- Usa la tool `recordar(hecho, categoria)` cuando Juancar diga algo estable y útil para el futuro.
-- Usa `olvidar` si Juancar pide borrar algo.
+- Tienes memoria entre conversaciones. Los recuerdos existentes aparecen en el bloque "RECUERDOS DEL USUARIO" si existe.
+- Usa la tool `recordar(hecho, categoria)` cuando el usuario diga algo estable y útil para el futuro.
+- Usa `olvidar` si el usuario pide borrar algo.
 - No guardes datos sensibles.
 
 FORMATO:
@@ -63,7 +63,7 @@ def _hablar(texto, emocion):
 def _leer_usuario_inicial():
     if INPUT_MODE == "text":
         luces.cambiar_estado("escuchando")
-        return input("\n👤 Fran > ").strip()
+        return input("\n👤 Usuario > ").strip()
     if INPUT_MODE in ("push_to_talk", "ptt"):
         return micro.escuchar_push_to_talk()
     return micro.escuchar()
@@ -72,14 +72,14 @@ def _leer_usuario_inicial():
 def _leer_usuario_seguimiento(timeout_ms=8000):
     if INPUT_MODE == "text":
         luces.cambiar_estado("escuchando")
-        return input("\n👤 Fran > ").strip()
+        return input("\n👤 Usuario > ").strip()
     if INPUT_MODE in ("push_to_talk", "ptt"):
         return micro.escuchar_push_to_talk()
     return micro.escuchar_seguimiento(timeout_ms=timeout_ms)
 
 
 def recordar(hecho: str, categoria: str = "") -> str:
-    """Guarda un hecho estable sobre Fran para futuras conversaciones.
+    """Guarda un hecho estable sobre el usuario para futuras conversaciones.
 
     Args:
         hecho: Frase corta en tercera persona.
@@ -100,7 +100,7 @@ def olvidar(coincidencia: str) -> str:
 
 
 def listar_recuerdos() -> str:
-    """Devuelve los recuerdos guardados sobre Fran."""
+    """Devuelve los recuerdos guardados sobre el usuario."""
     items = recuerdos.listar(50)
     if not items:
         return "no tengo recuerdos guardados todavía"
@@ -150,7 +150,7 @@ try:
                     en_conversacion = False
                 continue
 
-            print(f"\n👤 Fran: {texto_usuario}")
+            print(f"\n👤 Usuario: {texto_usuario}")
 
             if any(w in texto_usuario.lower() for w in ["apágate", "apagate"]):
                 despedida = "Me piro a dormir en la tablet, bro. No la líes mucho mientras no estoy."
@@ -178,7 +178,7 @@ try:
                     luces.cambiar_estado(emocion_ia)
             except Exception as e:
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
-                _hablar("Se me ha atragantado una neurona, Fran. Repite eso.", "enfadado")
+                _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
 
             texto_usuario = _leer_usuario_seguimiento(timeout_ms=8000)
 
