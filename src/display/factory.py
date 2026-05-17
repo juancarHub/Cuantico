@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import os
+import config
 
 from .null_display import NullDisplay
 
 
 def create_display():
-    backend = os.getenv("DISPLAY_BACKEND", "auto").lower()
+    backend = config.DISPLAY_BACKEND
+
+    print(f"🖥️ Display backend configurado: {backend}")
 
     if backend in ("null", "none"):
         return NullDisplay()
