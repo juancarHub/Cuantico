@@ -131,6 +131,8 @@ class ScreenDisplay(BaseDisplay):
                 painter.drawText(0, int(h - r * 0.28), w, int(r * 0.2), Qt.AlignCenter, self.state.upper())
 
             def _palette(self, t: float):
+                if self.state == "esperando":
+                    return (3, 20, 8), (72, 150, 65), (235, 255, 230), (235, 255, 230)
                 if self.state == "escuchando":
                     return (5, 20, 32), (30, 180, 230), (230, 255, 255), (230, 255, 255)
                 if self.state == "pensando":
@@ -144,7 +146,7 @@ class ScreenDisplay(BaseDisplay):
                     return (8, 6, 20), (90, 80, 150), (20, 20, 40), (20, 20, 40)
                 if self.state == "apagado":
                     return (0, 0, 0), (25, 25, 25), (5, 5, 5), (5, 5, 5)
-                return (18, 0, 0), (200, 40, 40), (255, 230, 230), (255, 230, 230)
+                return (3, 20, 8), (72, 150, 65), (235, 255, 230), (235, 255, 230)
 
             def _speed(self) -> float:
                 return {
