@@ -1,0 +1,2 @@
+en CMD para windows
+winget install Gyan.FFmpeg
