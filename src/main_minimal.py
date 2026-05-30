@@ -61,11 +61,11 @@ def _hablar(texto, emocion):
             _volver_a_esperando()
 
 
-def _hablar_stream(generador_texto, emocion):
+def _hablar_stream(generador_texto, emocion, on_first_audio=None):
     with _tts_lock:
         try:
             interaction_state.set_state("speaking")
-            altavoz.hablar_stream(generador_texto, emocion)
+            altavoz.hablar_stream(generador_texto, emocion, on_first_audio=on_first_audio)
         finally:
             _volver_a_esperando()
 
@@ -103,6 +103,15 @@ def _responder_streaming(chat, texto_usuario):
     stream = chat.stream_message(texto_usuario)
     emotion = "sarcasmo"
     first_piece_at = None
+    first_audio_logged = False
+
+    def _on_first_audio():
+        nonlocal first_audio_logged
+        if first_audio_logged:
+            return
+        first_audio_logged = True
+        if config.DEBUG_LATENCY:
+            print(f"⏱️ FIRST_AUDIO({_provider.name}): {time.perf_counter() - t_stream:.2f}s")
 
     def _texto_limpio():
         nonlocal emotion, first_piece_at
@@ -114,7 +123,7 @@ def _responder_streaming(chat, texto_usuario):
                     print(f"⏱️ LLM-stream-first({_provider.name}): {first_piece_at - t_stream:.2f}s")
             yield piece
 
-    _hablar_stream(_texto_limpio(), emotion)
+    _hablar_stream(_texto_limpio(), emotion, on_first_audio=_on_first_audio)
 
     if config.DEBUG_LATENCY:
         total = time.perf_counter() - t_stream
