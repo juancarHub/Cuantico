@@ -68,31 +68,63 @@ def hablar(texto, emocion):
         _hablar_por_tuberia_linux(texto, emocion)
 
 
-def _worker_hablar_frases(frases: queue.Queue, emocion: str, errores: list[BaseException]):
+def _generar_audio_frases(frases: queue.Queue, audios: queue.Queue, errores: list[BaseException]):
     while True:
         frase = frases.get()
         try:
             if frase is _SENTINEL:
+                audios.put(_SENTINEL)
                 return
-            hablar(frase, emocion)
+            print(f"🔊 TTS provider: {_tts_provider.name}")
+            path = _tts_provider.generate_to_file(frase)
+            audios.put(path)
         except BaseException as exc:
             errores.append(exc)
+            audios.put(_SENTINEL)
             return
         finally:
             frases.task_done()
 
 
+def _reproducir_audios(audios: queue.Queue, emocion: str, errores: list[BaseException]):
+    while True:
+        path = audios.get()
+        try:
+            if path is _SENTINEL:
+                return
+            luces.cambiar_estado(f"hablando:{emocion}")
+            _audio_output.play_file(path)
+        except BaseException as exc:
+            errores.append(exc)
+            return
+        finally:
+            if path is not _SENTINEL:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            audios.task_done()
+
+
 def hablar_stream(generador_texto, emocion="sarcasmo"):
-    print(f"🔊 [Altavoz] Streaming paralelo ({emocion})...")
+    print(f"🔊 [Altavoz] Streaming pipeline ({emocion})...")
 
     frases: queue.Queue = queue.Queue()
+    audios: queue.Queue = queue.Queue()
     errores: list[BaseException] = []
-    worker = threading.Thread(
-        target=_worker_hablar_frases,
-        args=(frases, emocion, errores),
+
+    tts_worker = threading.Thread(
+        target=_generar_audio_frases,
+        args=(frases, audios, errores),
         daemon=True,
     )
-    worker.start()
+    play_worker = threading.Thread(
+        target=_reproducir_audios,
+        args=(audios, emocion, errores),
+        daemon=True,
+    )
+    tts_worker.start()
+    play_worker.start()
 
     buffer = ""
     try:
@@ -116,7 +148,9 @@ def hablar_stream(generador_texto, emocion="sarcasmo"):
     finally:
         frases.put(_SENTINEL)
         frases.join()
-        worker.join(timeout=1.0)
+        audios.join()
+        tts_worker.join(timeout=1.0)
+        play_worker.join(timeout=1.0)
 
     if errores:
         raise errores[0]
