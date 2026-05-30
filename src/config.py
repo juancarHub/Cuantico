@@ -86,6 +86,7 @@ AUDIO_OUTPUT_BACKEND = _opt("AUDIO_OUTPUT_BACKEND", "auto").lower()
 
 # LLM
 LLM_PROVIDER = _opt("LLM_PROVIDER", "openai").lower()
+ENABLE_LLM_STREAMING = _bool("ENABLE_LLM_STREAMING", False)
 
 OPENAI_API_KEY = _opt("OPENAI_API_KEY")
 OPENAI_MODEL = _opt("OPENAI_MODEL", "gpt-4.1-mini")
