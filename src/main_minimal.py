@@ -99,7 +99,7 @@ def _stream_limpiando_emocion(chunks):
 
 
 def _responder_streaming(chat, texto_usuario):
-    t_llm = time.perf_counter()
+    t_stream = time.perf_counter()
     stream = chat.stream_message(texto_usuario)
     emotion = "sarcasmo"
     first_piece_at = None
@@ -111,14 +111,14 @@ def _responder_streaming(chat, texto_usuario):
             if first_piece_at is None:
                 first_piece_at = time.perf_counter()
                 if config.DEBUG_LATENCY:
-                    print(f"⏱️ LLM-stream-first({_provider.name}): {first_piece_at - t_llm:.2f}s")
+                    print(f"⏱️ LLM-stream-first({_provider.name}): {first_piece_at - t_stream:.2f}s")
             yield piece
 
     _hablar_stream(_texto_limpio(), emotion)
 
     if config.DEBUG_LATENCY:
-        total = time.perf_counter() - t_llm
-        print(f"⏱️ LLM-stream-total({_provider.name}): {total:.2f}s")
+        total = time.perf_counter() - t_stream
+        print(f"⏱️ STREAM_SESSION_TOTAL({_provider.name}): {total:.2f}s")
 
 
 def _leer_usuario_inicial():
