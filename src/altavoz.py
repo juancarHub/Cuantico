@@ -1,4 +1,6 @@
 import os
+import queue
+import threading
 
 import luces
 from audio.output import AudioOutput
@@ -6,6 +8,9 @@ from tts import create_tts
 
 _tts_provider = create_tts()
 _audio_output = AudioOutput()
+
+
+_SENTINEL = object()
 
 
 def _hablar_por_archivo(texto, emocion):
@@ -63,22 +68,55 @@ def hablar(texto, emocion):
         _hablar_por_tuberia_linux(texto, emocion)
 
 
+def _worker_hablar_frases(frases: queue.Queue, emocion: str, errores: list[BaseException]):
+    while True:
+        frase = frases.get()
+        try:
+            if frase is _SENTINEL:
+                return
+            hablar(frase, emocion)
+        except BaseException as exc:
+            errores.append(exc)
+            return
+        finally:
+            frases.task_done()
+
+
 def hablar_stream(generador_texto, emocion="sarcasmo"):
     print(f"🔊 [Altavoz] Streaming paralelo ({emocion})...")
 
-    buffer = ""
-    for chunk in generador_texto:
-        if not chunk:
-            continue
-        buffer += chunk
-        while True:
-            idx = _encontrar_corte(buffer)
-            if idx == -1:
-                break
-            frase = buffer[: idx + 1].strip()
-            buffer = buffer[idx + 1:]
-            if frase:
-                hablar(frase, emocion)
+    frases: queue.Queue = queue.Queue()
+    errores: list[BaseException] = []
+    worker = threading.Thread(
+        target=_worker_hablar_frases,
+        args=(frases, emocion, errores),
+        daemon=True,
+    )
+    worker.start()
 
-    if buffer.strip():
-        hablar(buffer.strip(), emocion)
+    buffer = ""
+    try:
+        for chunk in generador_texto:
+            if errores:
+                break
+            if not chunk:
+                continue
+            buffer += chunk
+            while True:
+                idx = _encontrar_corte(buffer)
+                if idx == -1:
+                    break
+                frase = buffer[: idx + 1].strip()
+                buffer = buffer[idx + 1:]
+                if frase:
+                    frases.put(frase)
+
+        if buffer.strip() and not errores:
+            frases.put(buffer.strip())
+    finally:
+        frases.put(_SENTINEL)
+        frases.join()
+        worker.join(timeout=1.0)
+
+    if errores:
+        raise errores[0]
