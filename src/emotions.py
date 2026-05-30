@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 
@@ -54,6 +55,41 @@ EMOTIONS: dict[str, EmotionSpec] = {
 VALID_EMOTIONS = frozenset(EMOTIONS.keys())
 DEFAULT_EMOTION = "sarcasmo"
 
+EMOTION_ALIASES = {
+    "carino": "cariño",
+    "cariñoso": "cariño",
+    "carinoso": "cariño",
+    "amor": "cariño",
+    "ternura": "cariño",
+    "tierno": "cariño",
+    "afecto": "cariño",
+    "afectivo": "cariño",
+    "contento": "cariño",
+    "feliz": "cariño",
+    "alegre": "cachondeo",
+    "divertido": "cachondeo",
+    "humor": "cachondeo",
+    "broma": "cachondeo",
+    "gracioso": "cachondeo",
+    "ironico": "sarcasmo",
+    "ironia": "sarcasmo",
+    "sarcástico": "sarcasmo",
+    "sarcastico": "sarcasmo",
+    "molesto": "enfadado",
+    "enojado": "enfadado",
+    "cabreado": "enfadado",
+    "ira": "enfadado",
+    "furia": "enfadado",
+    "cansado": "aburrido",
+    "desganado": "aburrido",
+    "plano": "aburrido",
+}
+
+
+def _strip_accents(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
 
 def emotion_control_instructions() -> str:
     lines = [
@@ -68,6 +104,7 @@ def emotion_control_instructions() -> str:
     ]
     lines.extend(f"  emocion: {emotion_id}" for emotion_id in EMOTIONS)
     lines.extend([
+        "- No uses emociones fuera de esa lista; por ejemplo, no uses contento, feliz, triste ni calmado.",
         "- Después de esa línea, escribe la respuesta normal.",
         "- No leas ni expliques la línea de emoción al usuario; es control interno.",
     ])
@@ -76,8 +113,7 @@ def emotion_control_instructions() -> str:
 
 def parse_emotion_and_text(text: str) -> tuple[str, str]:
     clean = (text or "").strip()
-    emotion_options = "|".join(sorted(re.escape(e) for e in VALID_EMOTIONS))
-    pattern = rf"^\s*\[?\s*emocion\s*[:=]\s*({emotion_options})\s*\]?\s*\n?"
+    pattern = r"^\s*\[?\s*(?:emocion|emoción|emotion)\s*[:=]\s*([^\]\n\r]+)\s*\]?\s*\n?"
     match = re.match(pattern, clean, flags=re.IGNORECASE)
     if match:
         emotion = normalize_emotion(match.group(1))
@@ -90,6 +126,17 @@ def normalize_emotion(emotion: str) -> str:
     normalized = (emotion or "").strip().lower()
     if normalized in VALID_EMOTIONS:
         return normalized
+
+    without_accents = _strip_accents(normalized)
+    if without_accents in VALID_EMOTIONS:
+        return without_accents
+
+    if normalized in EMOTION_ALIASES:
+        return EMOTION_ALIASES[normalized]
+
+    if without_accents in EMOTION_ALIASES:
+        return EMOTION_ALIASES[without_accents]
+
     return DEFAULT_EMOTION
 
 
