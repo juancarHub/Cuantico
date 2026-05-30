@@ -56,10 +56,69 @@ def _hablar(texto, emocion):
     with _tts_lock:
         try:
             interaction_state.set_state("speaking")
-            luces.cambiar_estado(f"hablando:{emocion}")
             altavoz.hablar(texto, emocion)
         finally:
             _volver_a_esperando()
+
+
+def _hablar_stream(generador_texto, emocion):
+    with _tts_lock:
+        try:
+            interaction_state.set_state("speaking")
+            altavoz.hablar_stream(generador_texto, emocion)
+        finally:
+            _volver_a_esperando()
+
+
+def _stream_limpiando_emocion(chunks):
+    buffer = ""
+    emotion = None
+    started = False
+
+    for chunk in chunks:
+        if not chunk:
+            continue
+
+        if emotion is None:
+            buffer += chunk
+            if "\n" not in buffer and len(buffer) < 96:
+                continue
+
+            emotion, clean = parse_emotion_and_text(buffer)
+            started = True
+            if clean:
+                yield emotion, clean
+            continue
+
+        yield emotion, chunk
+
+    if not started:
+        emotion, clean = parse_emotion_and_text(buffer)
+        if clean:
+            yield emotion, clean
+
+
+def _responder_streaming(chat, texto_usuario):
+    t_llm = time.perf_counter()
+    stream = chat.stream_message(texto_usuario)
+    emotion = "sarcasmo"
+    first_piece_at = None
+
+    def _texto_limpio():
+        nonlocal emotion, first_piece_at
+        for detected_emotion, piece in _stream_limpiando_emocion(stream):
+            emotion = detected_emotion
+            if first_piece_at is None:
+                first_piece_at = time.perf_counter()
+                if config.DEBUG_LATENCY:
+                    print(f"⏱️ LLM-stream-first({_provider.name}): {first_piece_at - t_llm:.2f}s")
+            yield piece
+
+    _hablar_stream(_texto_limpio(), emotion)
+
+    if config.DEBUG_LATENCY:
+        total = time.perf_counter() - t_llm
+        print(f"⏱️ LLM-stream-total({_provider.name}): {total:.2f}s")
 
 
 def _leer_usuario_inicial():
@@ -105,6 +164,7 @@ print("  🚀 CUÁNTICO MINIMAL: VOZ + CARA + LLM ")
 print("==================================================")
 print(f"🧠 Provider configurado: {config.LLM_PROVIDER}")
 print(f"🎙️ Input mode: {INPUT_MODE}")
+print(f"🌊 LLM streaming: {'on' if config.ENABLE_LLM_STREAMING else 'off'}")
 
 _provider = llm.create_provider()
 print(f"🧠 LLM provider activo: {_provider.name}")
@@ -161,20 +221,21 @@ try:
             print("🤖 Cuántico está procesando...")
 
             try:
-                t_llm = time.perf_counter()
-                response = chat.send_message(texto_usuario)
-                if config.DEBUG_LATENCY:
-                    print(f"⏱️ LLM({_provider.name}): {time.perf_counter() - t_llm:.2f}s")
-                texto_respuesta = (response.text or "").strip()
-                if texto_respuesta:
-                    emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
-                    print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
-                    _hablar(texto_limpio, emocion_ia)
+                if config.ENABLE_LLM_STREAMING:
+                    _responder_streaming(chat, texto_usuario)
                 else:
-                    _volver_a_esperando()
+                    t_llm = time.perf_counter()
+                    response = chat.send_message(texto_usuario)
+                    if config.DEBUG_LATENCY:
+                        print(f"⏱️ LLM({_provider.name}): {time.perf_counter() - t_llm:.2f}s")
+                    texto_respuesta = (response.text or "").strip()
+                    if texto_respuesta:
+                        emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
+                        print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
+                        _hablar(texto_limpio, emocion_ia)
+                    else:
+                        _volver_a_esperando()
             except Exception as e:
-                if config.DEBUG_LATENCY:
-                    print(f"⏱️ LLM({_provider.name}) falló tras {time.perf_counter() - t_llm:.2f}s")
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 try:
                     _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
