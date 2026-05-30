@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import math
-import os
 import queue
 import sys
 import threading
 import time
 
+import config
 import interaction_state
 import ui_events
+from emotions import VALID_EMOTIONS
 
 from .base import BaseDisplay
 
 
-EMOTIONS = {"sarcasmo", "enfadado", "cachondeo", "aburrido", "neutral"}
 OPERATIONS = {"esperando", "escuchando", "pensando", "hablando", "apagado"}
 
 
@@ -55,7 +55,7 @@ class ScreenDisplay(BaseDisplay):
             return
 
         app = QApplication.instance() or QApplication(sys.argv[:1])
-        display_mode = os.getenv("SCREEN_DISPLAY_MODE", "window").lower()
+        display_mode = config.SCREEN_DISPLAY_MODE
 
         class FaceWidget(QWidget):
             def __init__(self, events: queue.Queue[str]) -> None:
@@ -90,7 +90,7 @@ class ScreenDisplay(BaseDisplay):
                     op, emotion = state.split(":", 1)
                     if op in OPERATIONS:
                         self.operation = op
-                    if emotion in EMOTIONS:
+                    if emotion in VALID_EMOTIONS:
                         self.emotion = emotion
                     return
 
@@ -100,7 +100,7 @@ class ScreenDisplay(BaseDisplay):
                         self.emotion = "neutral"
                     return
 
-                if state in EMOTIONS:
+                if state in VALID_EMOTIONS:
                     self.emotion = state
                     return
 
@@ -125,6 +125,8 @@ class ScreenDisplay(BaseDisplay):
                     return {"eye_w": 0.30, "eye_h": 0.07, "tilt": 0.00, "wave_amp": 0.025, "wave_freq": 1.2, "wave_speed": 1.4, "jitter": 0.20}
                 if self.emotion == "sarcasmo":
                     return {"eye_w": 0.23, "eye_h": 0.16, "tilt": 0.08, "wave_amp": 0.045, "wave_freq": 2.0, "wave_speed": 3.7, "jitter": 0.55}
+                if self.emotion == "cariño":
+                    return {"eye_w": 0.24, "eye_h": 0.21, "tilt": 0.00, "wave_amp": 0.035, "wave_freq": 1.7, "wave_speed": 2.8, "jitter": 0.25}
                 return {"eye_w": 0.22, "eye_h": 0.20, "tilt": 0.00, "wave_amp": 0.040, "wave_freq": 2.0, "wave_speed": 3.4, "jitter": 0.35}
 
             def paintEvent(self, event) -> None:
@@ -183,6 +185,8 @@ class ScreenDisplay(BaseDisplay):
                         return (24, 4, 35), (210, 80, 240), (255, 255, 255), (255, 255, 255)
                     if self.emotion == "aburrido":
                         return (8, 6, 20), (90, 80, 150), (20, 20, 40), (20, 20, 40)
+                    if self.emotion == "cariño":
+                        return (18, 10, 22), (210, 95, 150), (255, 235, 245), (255, 235, 245)
                     return (18, 0, 0), (200, 40, 40), (255, 230, 230), (255, 230, 230)
                 if self.operation == "apagado":
                     return (0, 0, 0), (25, 25, 25), (5, 5, 5), (5, 5, 5)
