@@ -3,6 +3,8 @@ import platform
 import subprocess
 import tempfile
 
+import config
+
 
 class LinuxPipeline:
     def __init__(self, sox_proc, aplay_proc):
@@ -17,7 +19,7 @@ class LinuxPipeline:
 
 class AudioOutput:
     def __init__(self):
-        self.backend = os.getenv("AUDIO_OUTPUT_BACKEND", "auto").lower()
+        self.backend = config.AUDIO_OUTPUT_BACKEND
 
     def use_file_backend(self):
         if self.backend in ("file", "windows", "winsound", "playsound"):
