@@ -1,4 +1,5 @@
 import tempfile
+import time
 
 from openai import OpenAI
 
@@ -17,6 +18,7 @@ class OpenAITTS(BaseTTS):
         self.format = config.OPENAI_TTS_FORMAT
 
     def generate_to_file(self, text: str) -> str:
+        t0 = time.perf_counter()
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{self.format}") as tmp:
             path = tmp.name
 
@@ -28,5 +30,8 @@ class OpenAITTS(BaseTTS):
             response_format=self.format,
         ) as response:
             response.stream_to_file(path)
+
+        if config.DEBUG_LATENCY:
+            print(f"⏱️ TTS(OpenAI): {time.perf_counter() - t0:.2f}s")
 
         return path
