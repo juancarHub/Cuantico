@@ -1,6 +1,7 @@
 import os
 import queue
 import threading
+from typing import Callable
 
 import luces
 from audio.output import AudioOutput
@@ -86,13 +87,23 @@ def _generar_audio_frases(frases: queue.Queue, audios: queue.Queue, errores: lis
             frases.task_done()
 
 
-def _reproducir_audios(audios: queue.Queue, emocion: str, errores: list[BaseException]):
+def _reproducir_audios(
+    audios: queue.Queue,
+    emocion: str,
+    errores: list[BaseException],
+    on_first_audio: Callable[[], None] | None = None,
+):
+    first_audio_done = False
     while True:
         path = audios.get()
         try:
             if path is _SENTINEL:
                 return
             luces.cambiar_estado(f"hablando:{emocion}")
+            if not first_audio_done:
+                first_audio_done = True
+                if on_first_audio:
+                    on_first_audio()
             _audio_output.play_file(path)
         except BaseException as exc:
             errores.append(exc)
@@ -106,7 +117,7 @@ def _reproducir_audios(audios: queue.Queue, emocion: str, errores: list[BaseExce
             audios.task_done()
 
 
-def hablar_stream(generador_texto, emocion="sarcasmo"):
+def hablar_stream(generador_texto, emocion="sarcasmo", on_first_audio: Callable[[], None] | None = None):
     print(f"🔊 [Altavoz] Streaming pipeline ({emocion})...")
 
     frases: queue.Queue = queue.Queue()
@@ -120,7 +131,7 @@ def hablar_stream(generador_texto, emocion="sarcasmo"):
     )
     play_worker = threading.Thread(
         target=_reproducir_audios,
-        args=(audios, emocion, errores),
+        args=(audios, emocion, errores, on_first_audio),
         daemon=True,
     )
     tts_worker.start()
