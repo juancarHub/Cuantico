@@ -161,7 +161,10 @@ try:
             print("🤖 Cuántico está procesando...")
 
             try:
+                t_llm = time.perf_counter()
                 response = chat.send_message(texto_usuario)
+                if config.DEBUG_LATENCY:
+                    print(f"⏱️ LLM({_provider.name}): {time.perf_counter() - t_llm:.2f}s")
                 texto_respuesta = (response.text or "").strip()
                 if texto_respuesta:
                     emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
@@ -170,6 +173,8 @@ try:
                 else:
                     _volver_a_esperando()
             except Exception as e:
+                if config.DEBUG_LATENCY:
+                    print(f"⏱️ LLM({_provider.name}) falló tras {time.perf_counter() - t_llm:.2f}s")
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
                 try:
                     _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
