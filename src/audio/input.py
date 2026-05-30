@@ -1,4 +1,3 @@
-import os
 import tempfile
 import threading
 import time
@@ -7,6 +6,7 @@ import wave
 import numpy as np
 import pyaudio
 
+import config
 import luces
 import ui_events
 
@@ -14,11 +14,10 @@ SAMPLE_RATE = 16000
 OWW_FRAME = 1280
 VAD_FRAME_MS = 20
 VAD_FRAME = SAMPLE_RATE * VAD_FRAME_MS // 1000
-PUSH_TO_TALK_MAX_MS = int(os.getenv("PUSH_TO_TALK_MAX_MS", "12000"))
-PUSH_TO_TALK_MODE = os.getenv("PUSH_TO_TALK_MODE", "enter_stop").lower()
-AUTO_STOP_SILENCE_MS = int(os.getenv("AUTO_STOP_SILENCE_MS", "1400"))
-AUTO_STOP_MIN_VOICE_MS = int(os.getenv("AUTO_STOP_MIN_VOICE_MS", "600"))
-AUTO_STOP_RMS_THRESHOLD = float(os.getenv("AUTO_STOP_RMS_THRESHOLD", "500"))
+
+
+def _push_to_talk_max_ms():
+    return config.PUSH_TO_TALK_MAX_MS
 
 
 class AudioInput:
@@ -128,7 +127,8 @@ class AudioInput:
             return 0.0
         return float(np.sqrt(np.mean(audio * audio)))
 
-    def grabar_fijo(self, max_ms=PUSH_TO_TALK_MAX_MS):
+    def grabar_fijo(self, max_ms=None):
+        max_ms = max_ms or _push_to_talk_max_ms()
         luces.cambiar_estado("escuchando")
         buffer_audio = bytearray()
         inicio = time.time()
@@ -139,7 +139,8 @@ class AudioInput:
 
         return self.guardar_wav(buffer_audio)
 
-    def grabar_hasta_enter(self, max_ms=PUSH_TO_TALK_MAX_MS):
+    def grabar_hasta_enter(self, max_ms=None):
+        max_ms = max_ms or _push_to_talk_max_ms()
         luces.cambiar_estado("escuchando")
         buffer_audio = bytearray()
         stop_event = threading.Event()
@@ -157,7 +158,8 @@ class AudioInput:
 
         return self.guardar_wav(buffer_audio)
 
-    def grabar_hasta_tap(self, max_ms=PUSH_TO_TALK_MAX_MS):
+    def grabar_hasta_tap(self, max_ms=None):
+        max_ms = max_ms or _push_to_talk_max_ms()
         luces.cambiar_estado("escuchando")
         buffer_audio = bytearray()
         stop_event = threading.Event()
@@ -176,7 +178,8 @@ class AudioInput:
 
         return self.guardar_wav(buffer_audio)
 
-    def grabar_hasta_tap_o_silencio(self, max_ms=PUSH_TO_TALK_MAX_MS):
+    def grabar_hasta_tap_o_silencio(self, max_ms=None):
+        max_ms = max_ms or _push_to_talk_max_ms()
         luces.cambiar_estado("escuchando")
         buffer_audio = bytearray()
         stop_event = threading.Event()
@@ -195,9 +198,9 @@ class AudioInput:
 
         print(
             f"🎙️ Grabando por tap/silencio. "
-            f"silencio={AUTO_STOP_SILENCE_MS}ms, "
-            f"min_voz={AUTO_STOP_MIN_VOICE_MS}ms, "
-            f"rms>{AUTO_STOP_RMS_THRESHOLD:.0f}, "
+            f"silencio={config.AUTO_STOP_SILENCE_MS}ms, "
+            f"min_voz={config.AUTO_STOP_MIN_VOICE_MS}ms, "
+            f"rms>{config.AUTO_STOP_RMS_THRESHOLD:.0f}, "
             f"máximo={max_ms // 1000}s."
         )
 
@@ -206,26 +209,27 @@ class AudioInput:
             buffer_audio += frame
 
             rms = self._rms(frame)
-            if rms >= AUTO_STOP_RMS_THRESHOLD:
+            if rms >= config.AUTO_STOP_RMS_THRESHOLD:
                 voz_ms += VAD_FRAME_MS
                 silencio_ms = 0
-                if voz_ms >= AUTO_STOP_MIN_VOICE_MS:
+                if voz_ms >= config.AUTO_STOP_MIN_VOICE_MS:
                     hubo_voz = True
             else:
                 if hubo_voz:
                     silencio_ms += VAD_FRAME_MS
 
-            if hubo_voz and silencio_ms >= AUTO_STOP_SILENCE_MS:
+            if hubo_voz and silencio_ms >= config.AUTO_STOP_SILENCE_MS:
                 print("🎙️ Silencio detectado. Enviando audio.")
                 break
 
         return self.guardar_wav(buffer_audio)
 
-    def grabar_manual(self, max_ms=PUSH_TO_TALK_MAX_MS):
-        if PUSH_TO_TALK_MODE in ("tap_or_silence", "screen_tap_or_silence", "touch_or_silence", "auto_stop"):
+    def grabar_manual(self, max_ms=None):
+        mode = config.PUSH_TO_TALK_MODE
+        if mode in ("tap_or_silence", "screen_tap_or_silence", "touch_or_silence", "auto_stop"):
             return self.grabar_hasta_tap_o_silencio(max_ms=max_ms)
-        if PUSH_TO_TALK_MODE in ("tap_stop", "screen_tap", "touch_stop"):
+        if mode in ("tap_stop", "screen_tap", "touch_stop"):
             return self.grabar_hasta_tap(max_ms=max_ms)
-        if PUSH_TO_TALK_MODE in ("enter_stop", "manual_stop", "stop_enter"):
+        if mode in ("enter_stop", "manual_stop", "stop_enter"):
             return self.grabar_hasta_enter(max_ms=max_ms)
         return self.grabar_fijo(max_ms=max_ms)
