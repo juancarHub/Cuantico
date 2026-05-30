@@ -22,6 +22,22 @@ def _opt(clave: str, por_defecto: str = "") -> str:
     return os.getenv(clave, por_defecto).strip()
 
 
+def _int(clave: str, por_defecto: int) -> int:
+    valor = _opt(clave, str(por_defecto))
+    try:
+        return int(valor)
+    except ValueError as exc:
+        raise RuntimeError(f"{clave} debe ser entero, recibido: {valor!r}") from exc
+
+
+def _float(clave: str, por_defecto: float) -> float:
+    valor = _opt(clave, str(por_defecto))
+    try:
+        return float(valor)
+    except ValueError as exc:
+        raise RuntimeError(f"{clave} debe ser numérico, recibido: {valor!r}") from exc
+
+
 def _ruta(clave: str, por_defecto: str = "") -> str:
     """Rutas relativas se resuelven contra la raíz del repo."""
     v = _opt(clave, por_defecto)
@@ -34,6 +50,17 @@ def _ruta(clave: str, por_defecto: str = "") -> str:
 # Display / plataforma visual
 DISPLAY_BACKEND = _opt("DISPLAY_BACKEND", "screen").lower()
 SCREEN_DISPLAY_MODE = _opt("SCREEN_DISPLAY_MODE", "window").lower()
+
+# Interacción tablet / entrada
+INPUT_MODE = _opt("INPUT_MODE", "voice").lower()
+PUSH_TO_TALK_MODE = _opt("PUSH_TO_TALK_MODE", "enter_stop").lower()
+PUSH_TO_TALK_MAX_MS = _int("PUSH_TO_TALK_MAX_MS", 12000)
+AUTO_STOP_SILENCE_MS = _int("AUTO_STOP_SILENCE_MS", 1400)
+AUTO_STOP_MIN_VOICE_MS = _int("AUTO_STOP_MIN_VOICE_MS", 600)
+AUTO_STOP_RMS_THRESHOLD = _float("AUTO_STOP_RMS_THRESHOLD", 500)
+
+# Salida de audio
+AUDIO_OUTPUT_BACKEND = _opt("AUDIO_OUTPUT_BACKEND", "auto").lower()
 
 # LLM
 LLM_PROVIDER = _opt("LLM_PROVIDER", "openai").lower()
