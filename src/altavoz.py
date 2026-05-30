@@ -1,5 +1,6 @@
 import os
 
+import luces
 from audio.output import AudioOutput
 from tts import create_tts
 
@@ -7,10 +8,11 @@ _tts_provider = create_tts()
 _audio_output = AudioOutput()
 
 
-def _hablar_por_archivo(texto):
+def _hablar_por_archivo(texto, emocion):
     print(f"🔊 TTS provider: {_tts_provider.name}")
     path = _tts_provider.generate_to_file(texto)
     try:
+        luces.cambiar_estado(f"hablando:{emocion}")
         _audio_output.play_file(path)
     finally:
         try:
@@ -19,10 +21,11 @@ def _hablar_por_archivo(texto):
             pass
 
 
-def _hablar_por_tuberia_linux(texto):
+def _hablar_por_tuberia_linux(texto, emocion):
     path = _tts_provider.generate_to_file(texto)
     proceso = _audio_output.create_linux_pipeline()
     try:
+        luces.cambiar_estado(f"hablando:{emocion}")
         with open(path, "rb") as fh:
             while True:
                 chunk = fh.read(2048)
@@ -52,12 +55,12 @@ def _encontrar_corte(buffer):
 
 
 def hablar(texto, emocion):
-    print(f"🔊 [Altavoz] Escupiendo audio ({emocion})...")
+    print(f"🔊 [Altavoz] Preparando audio ({emocion})...")
 
     if _audio_output.use_file_backend():
-        _hablar_por_archivo(texto)
+        _hablar_por_archivo(texto, emocion)
     else:
-        _hablar_por_tuberia_linux(texto)
+        _hablar_por_tuberia_linux(texto, emocion)
 
 
 def hablar_stream(generador_texto, emocion="sarcasmo"):
