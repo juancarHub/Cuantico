@@ -38,6 +38,13 @@ def _float(clave: str, por_defecto: float) -> float:
         raise RuntimeError(f"{clave} debe ser numérico, recibido: {valor!r}") from exc
 
 
+def _float_range(clave: str, por_defecto: float, minimo: float, maximo: float) -> float:
+    valor = _float(clave, por_defecto)
+    if not minimo <= valor <= maximo:
+        raise RuntimeError(f"{clave} debe estar entre {minimo} y {maximo}, recibido: {valor}")
+    return valor
+
+
 def _ruta(clave: str, por_defecto: str = "") -> str:
     """Rutas relativas se resuelven contra la raíz del repo."""
     v = _opt(clave, por_defecto)
@@ -80,6 +87,9 @@ if LLM_PROVIDER == "gemini" and not GEMINI_API_KEY:
 # TTS
 ELEVENLABS_API_KEY = _req("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = _opt("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
+OPENAI_TTS_MODEL = _opt("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+OPENAI_TTS_VOICE = _opt("OPENAI_TTS_VOICE", "alloy")
+OPENAI_TTS_SPEED = _float_range("OPENAI_TTS_SPEED", 1.0, 0.25, 4.0)
 
 # STT / wake word
 STT_PROVIDER = _opt("STT_PROVIDER", "deepgram").lower()
