@@ -5,10 +5,10 @@ Por defecto conserva Gemini, pero permite seleccionar OpenAI desde .env.
 """
 from __future__ import annotations
 
-import json
 import inspect
+import json
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import config
 
@@ -21,6 +21,9 @@ class ChatResult:
 class BaseChat:
     def send_message(self, text: str) -> ChatResult:
         raise NotImplementedError
+
+    def stream_message(self, text: str) -> Iterator[str]:
+        yield self.send_message(text).text
 
 
 class BaseLLMProvider:
@@ -106,7 +109,9 @@ class OpenAIChat(BaseChat):
 
     def send_message(self, text: str) -> ChatResult:
         self._messages.append({"role": "user", "content": text})
+        return self._complete_after_user_message()
 
+    def _complete_after_user_message(self) -> ChatResult:
         for _ in range(8):
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -140,7 +145,50 @@ class OpenAIChat(BaseChat):
                     }
                 )
 
-        return ChatResult(text="Se me ha hecho bola el festival de tools. Repite eso más corto, Fran.")
+        return ChatResult(text="Se me ha hecho bola el festival de tools. Repite eso más corto, usuario.")
+
+    def stream_message(self, text: str) -> Iterator[str]:
+        self._messages.append({"role": "user", "content": text})
+        assistant_text = ""
+        saw_tool_call = False
+
+        try:
+            stream = self._client.chat.completions.create(
+                model=self._model,
+                messages=self._messages,
+                tools=self._tools,
+                tool_choice="auto",
+                stream=True,
+            )
+
+            for chunk in stream:
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                if getattr(delta, "tool_calls", None):
+                    saw_tool_call = True
+                    break
+
+                piece = delta.content or ""
+                if piece:
+                    assistant_text += piece
+                    yield piece
+
+        except Exception:
+            if config.DEBUG_LATENCY:
+                print("⚠️ Streaming LLM falló; usando fallback normal.")
+            result = self._complete_after_user_message()
+            yield result.text
+            return
+
+        if saw_tool_call:
+            if config.DEBUG_LATENCY:
+                print("⚠️ Streaming LLM encontró tool_calls; usando fallback normal.")
+            result = self._complete_after_user_message()
+            yield result.text
+            return
+
+        self._messages.append({"role": "assistant", "content": assistant_text})
 
 
 class OpenAIProvider(BaseLLMProvider):
