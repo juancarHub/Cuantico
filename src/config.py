@@ -22,6 +22,11 @@ def _opt(clave: str, por_defecto: str = "") -> str:
     return os.getenv(clave, por_defecto).strip()
 
 
+def _bool(clave: str, por_defecto: bool = False) -> bool:
+    valor = _opt(clave, "1" if por_defecto else "0").lower()
+    return valor in ("1", "true", "yes", "y", "on", "si", "sí")
+
+
 def _int(clave: str, por_defecto: int) -> int:
     valor = _opt(clave, str(por_defecto))
     try:
@@ -45,6 +50,13 @@ def _float_range(clave: str, por_defecto: float, minimo: float, maximo: float) -
     return valor
 
 
+def _choice(clave: str, por_defecto: str, opciones: tuple[str, ...]) -> str:
+    valor = _opt(clave, por_defecto).lower()
+    if valor not in opciones:
+        raise RuntimeError(f"{clave} debe ser uno de {opciones}, recibido: {valor!r}")
+    return valor
+
+
 def _ruta(clave: str, por_defecto: str = "") -> str:
     """Rutas relativas se resuelven contra la raíz del repo."""
     v = _opt(clave, por_defecto)
@@ -53,6 +65,9 @@ def _ruta(clave: str, por_defecto: str = "") -> str:
     p = Path(v)
     return str(p if p.is_absolute() else (_RAIZ / p).resolve())
 
+
+# Debug / rendimiento
+DEBUG_LATENCY = _bool("DEBUG_LATENCY", False)
 
 # Display / plataforma visual
 DISPLAY_BACKEND = _opt("DISPLAY_BACKEND", "screen").lower()
@@ -90,6 +105,7 @@ ELEVENLABS_VOICE_ID = _opt("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 OPENAI_TTS_MODEL = _opt("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
 OPENAI_TTS_VOICE = _opt("OPENAI_TTS_VOICE", "alloy")
 OPENAI_TTS_SPEED = _float_range("OPENAI_TTS_SPEED", 1.0, 0.25, 4.0)
+OPENAI_TTS_FORMAT = _choice("OPENAI_TTS_FORMAT", "wav", ("mp3", "wav", "opus", "aac", "flac", "pcm"))
 
 # STT / wake word
 STT_PROVIDER = _opt("STT_PROVIDER", "deepgram").lower()
