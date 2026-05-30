@@ -1,4 +1,3 @@
-import os
 import time
 import threading
 from datetime import datetime
@@ -11,7 +10,7 @@ import luces
 import recuerdos
 from emotions import emotion_control_instructions, parse_emotion_and_text
 
-INPUT_MODE = os.getenv("INPUT_MODE", "voice").lower()
+INPUT_MODE = config.INPUT_MODE
 micro = None
 if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
@@ -48,13 +47,19 @@ FORMATO:
 _tts_lock = threading.Lock()
 
 
+def _volver_a_esperando():
+    luces.cambiar_estado("esperando")
+    interaction_state.set_state("idle")
+
+
 def _hablar(texto, emocion):
     with _tts_lock:
-        interaction_state.set_state("speaking")
-        luces.cambiar_estado(f"hablando:{emocion}")
-        altavoz.hablar(texto, emocion)
-        luces.cambiar_estado("esperando")
-        interaction_state.set_state("idle")
+        try:
+            interaction_state.set_state("speaking")
+            luces.cambiar_estado(f"hablando:{emocion}")
+            altavoz.hablar(texto, emocion)
+        finally:
+            _volver_a_esperando()
 
 
 def _leer_usuario_inicial():
@@ -105,7 +110,7 @@ _provider = llm.create_provider()
 print(f"🧠 LLM provider activo: {_provider.name}")
 
 luces.encender_reactor()
-interaction_state.set_state("idle")
+_volver_a_esperando()
 recuerdos.inicializar()
 
 SYSTEM_PROMPT += f"\n\nFECHA ACTUAL DE REFERENCIA: {datetime.now().strftime('%Y-%m-%d %A %H:%M')} (zona horaria Europe/Madrid)."
@@ -123,8 +128,7 @@ elif INPUT_MODE in ("push_to_talk", "ptt"):
 
 try:
     while True:
-        luces.cambiar_estado("esperando")
-        interaction_state.set_state("idle")
+        _volver_a_esperando()
         texto_usuario = _leer_usuario_inicial()
         chat = _provider.create_chat(_prompt_con_memoria(), TOOLS)
 
@@ -163,9 +167,15 @@ try:
                     emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
                     print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
                     _hablar(texto_limpio, emocion_ia)
+                else:
+                    _volver_a_esperando()
             except Exception as e:
                 print(f"⚠️ Error en LLM ({_provider.name}): {e}")
-                _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
+                try:
+                    _hablar("Se me ha atragantado una neurona. Repite eso.", "enfadado")
+                except Exception as tts_error:
+                    print(f"⚠️ Error adicional en TTS/audio: {tts_error}")
+                    _volver_a_esperando()
 
             texto_usuario = _leer_usuario_seguimiento(timeout_ms=8000)
 
