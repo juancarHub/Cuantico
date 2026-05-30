@@ -103,9 +103,15 @@ def _grabar_desde(frame_inicial=b""):
 
 def _transcribir(path):
     print(f"🧠 [STT:{_stt_provider.name}] Analizando...")
+    t0 = time.perf_counter()
     try:
-        return _stt_provider.transcribe(path)
+        texto = _stt_provider.transcribe(path)
+        if config.DEBUG_LATENCY:
+            print(f"⏱️ STT({_stt_provider.name}): {time.perf_counter() - t0:.2f}s")
+        return texto
     except Exception as e:
+        if config.DEBUG_LATENCY:
+            print(f"⏱️ STT({_stt_provider.name}) falló tras {time.perf_counter() - t0:.2f}s")
         print(f"⚠️ Error STT ({_stt_provider.name}): {e}")
         return ""
     finally:
