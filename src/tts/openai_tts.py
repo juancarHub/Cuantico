@@ -11,8 +11,9 @@ class OpenAITTS(BaseTTS):
 
     def __init__(self):
         self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        self.model = config._opt("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
-        self.voice = config._opt("OPENAI_TTS_VOICE", "alloy")
+        self.model = config.OPENAI_TTS_MODEL
+        self.voice = config.OPENAI_TTS_VOICE
+        self.speed = config.OPENAI_TTS_SPEED
 
     def generate_to_file(self, text: str) -> str:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
@@ -22,6 +23,7 @@ class OpenAITTS(BaseTTS):
             model=self.model,
             voice=self.voice,
             input=text,
+            speed=self.speed,
             response_format="mp3",
         ) as response:
             response.stream_to_file(path)
