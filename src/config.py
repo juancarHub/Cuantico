@@ -87,6 +87,7 @@ AUDIO_OUTPUT_BACKEND = _opt("AUDIO_OUTPUT_BACKEND", "auto").lower()
 # LLM
 LLM_PROVIDER = _opt("LLM_PROVIDER", "openai").lower()
 ENABLE_LLM_STREAMING = _bool("ENABLE_LLM_STREAMING", False)
+ASSISTANT_NAME = _opt("ASSISTANT_NAME", "Atlantis")
 SYSTEM_PROMPT_PATH = _ruta("SYSTEM_PROMPT_PATH", "prompts/atlantis_system.txt")
 
 OPENAI_API_KEY = _opt("OPENAI_API_KEY")
