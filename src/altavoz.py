@@ -49,7 +49,6 @@ def _vaciar_cola(q: queue.Queue):
 def _esperar_workers(*workers: threading.Thread, timeout: float = 1.0):
     for worker in workers:
         worker.join(timeout=timeout)
-        print(f"🧪 INTERRUPT: worker {worker.name} alive={worker.is_alive()}")
 
 
 def _esperar_cola_o_interrupcion(q: queue.Queue) -> bool:
@@ -123,18 +122,15 @@ def hablar(texto, emocion):
 
 
 def _generar_audio_frases(frases: queue.Queue, audios: queue.Queue, errores: list[BaseException]):
-    print("🧪 INTERRUPT: tts_worker start")
     while True:
         frase = frases.get()
         try:
             if frase is _SENTINEL or _interrupt_event.is_set():
-                print("🧪 INTERRUPT: tts_worker sentinel/interrupted -> exit")
                 audios.put(_SENTINEL)
                 return
             print(f"🔊 TTS provider: {_tts_provider.name}")
             path = _tts_provider.generate_to_file(frase)
             if _interrupt_event.is_set():
-                print("🧪 INTERRUPT: tts_worker generated after interrupt, removing audio")
                 try:
                     os.remove(path)
                 except OSError:
@@ -156,16 +152,13 @@ def _reproducir_audios(
     errores: list[BaseException],
     on_first_audio: Callable[[], None] | None = None,
 ):
-    print("🧪 INTERRUPT: play_worker start")
     first_audio_done = False
     while True:
         path = audios.get()
         try:
             if path is _SENTINEL:
-                print("🧪 INTERRUPT: play_worker sentinel -> exit")
                 return
             if _interrupt_event.is_set():
-                print("🧪 INTERRUPT: play_worker interrupted before play -> exit")
                 return
             luces.cambiar_estado(f"hablando:{emocion}")
             if not first_audio_done:
@@ -174,7 +167,6 @@ def _reproducir_audios(
                     on_first_audio()
             _audio_output.play_file(path)
             if _interrupt_event.is_set():
-                print("🧪 INTERRUPT: play_worker interrupted after play -> exit")
                 return
         except BaseException as exc:
             errores.append(exc)
@@ -215,7 +207,6 @@ def hablar_stream(generador_texto, emocion="sarcasmo", on_first_audio: Callable[
     try:
         for chunk in generador_texto:
             if errores or _interrupt_event.is_set():
-                print("🧪 INTERRUPT: main stream loop break")
                 break
             if not chunk:
                 continue
@@ -232,27 +223,21 @@ def hablar_stream(generador_texto, emocion="sarcasmo", on_first_audio: Callable[
         if buffer.strip() and not errores and not _interrupt_event.is_set():
             frases.put(buffer.strip())
     finally:
-        print(f"🧪 INTERRUPT: entrar finally hablar_stream interrupted={_interrupt_event.is_set()}")
         frases.put(_SENTINEL)
         if not _esperar_cola_o_interrupcion(frases):
-            print("🧪 INTERRUPT: interrupción mientras esperaba frases")
             _vaciar_cola(frases)
             _vaciar_cola(audios)
             audios.put(_SENTINEL)
             _esperar_workers(tts_worker, play_worker, timeout=1.0)
-            print("🧪 INTERRUPT: saliendo hablar_stream")
             return
 
         if not _esperar_cola_o_interrupcion(audios):
-            print("🧪 INTERRUPT: interrupción mientras esperaba audios")
             _vaciar_cola(audios)
             audios.put(_SENTINEL)
             _esperar_workers(tts_worker, play_worker, timeout=1.0)
-            print("🧪 INTERRUPT: saliendo hablar_stream")
             return
 
         _esperar_workers(tts_worker, play_worker, timeout=1.0)
-        print("🧪 INTERRUPT: saliendo hablar_stream")
 
     if errores:
         raise errores[0]
