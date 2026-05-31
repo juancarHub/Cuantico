@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 
+import altavoz
 import config
 import interaction_state
 import ui_events
@@ -112,7 +113,9 @@ class ScreenDisplay(BaseDisplay):
                     QApplication.quit()
 
             def mousePressEvent(self, event) -> None:
-                if interaction_state.is_tap_allowed():
+                if self.operation == "hablando":
+                    altavoz.interrumpir()
+                elif interaction_state.is_tap_allowed():
                     ui_events.publish("screen_tap")
                 event.accept()
 
