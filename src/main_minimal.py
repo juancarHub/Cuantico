@@ -76,6 +76,8 @@ def _stream_limpiando_emocion(chunks):
     started = False
 
     for chunk in chunks:
+        if altavoz.esta_interrumpido():
+            break
         if not chunk:
             continue
 
@@ -92,7 +94,7 @@ def _stream_limpiando_emocion(chunks):
 
         yield emotion, chunk
 
-    if not started:
+    if not started and not altavoz.esta_interrumpido():
         emotion, clean = parse_emotion_and_text(buffer)
         if clean:
             yield emotion, clean
@@ -116,6 +118,8 @@ def _responder_streaming(chat, texto_usuario):
     def _texto_limpio():
         nonlocal emotion, first_piece_at
         for detected_emotion, piece in _stream_limpiando_emocion(stream):
+            if altavoz.esta_interrumpido():
+                break
             emotion = detected_emotion
             if first_piece_at is None:
                 first_piece_at = time.perf_counter()
@@ -127,7 +131,8 @@ def _responder_streaming(chat, texto_usuario):
 
     if config.DEBUG_LATENCY:
         total = time.perf_counter() - t_stream
-        print(f"⏱️ STREAM_SESSION_TOTAL({_provider.name}): {total:.2f}s")
+        label = "STREAM_INTERRUPTED" if altavoz.esta_interrumpido() else "STREAM_SESSION_TOTAL"
+        print(f"⏱️ {label}({_provider.name}): {total:.2f}s")
 
 
 def _leer_usuario_inicial():
