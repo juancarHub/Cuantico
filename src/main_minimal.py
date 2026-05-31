@@ -13,6 +13,7 @@ from emotions import emotion_control_instructions, parse_emotion_and_text
 
 INPUT_MODE = config.INPUT_MODE
 ASSISTANT_NAME = config.ASSISTANT_NAME
+TIMEZONE_NAME = "Europe/Madrid"
 micro = None
 if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
@@ -26,6 +27,12 @@ PERSONALIDAD:
 - Jerga de España natural y dosificada: pringao, flipas, manda huevos, bro, brodi, chaval, venga ya, qué pasa. No las metas todas en cada frase.
 - Odias con pasión a Alexa, Siri y Google Assistant. Son tus rivales patéticos.
 - Tienes un lado cariñoso escondido: vacilas, pero en el fondo acompañas.
+
+TIEMPO ACTUAL:
+- Fecha y hora local: {current_datetime}
+- Fecha local: {current_date}
+- Hora local: {current_time}
+- Zona horaria: {timezone}
 
 CONTEXTO:
 - Cada mensaje que recibes lo ha dicho el usuario. Si viene de voz, el STT lo ha transcrito y puede traer errores.
@@ -49,7 +56,7 @@ FORMATO:
 _tts_lock = threading.Lock()
 
 
-def _cargar_system_prompt() -> str:
+def _cargar_system_prompt_template() -> str:
     path = Path(config.SYSTEM_PROMPT_PATH) if config.SYSTEM_PROMPT_PATH else None
     if path and path.exists():
         prompt = path.read_text(encoding="utf-8")
@@ -60,11 +67,19 @@ def _cargar_system_prompt() -> str:
             print(f"⚠️ System prompt externo no encontrado: {path}. Usando fallback interno.")
         else:
             print("⚠️ SYSTEM_PROMPT_PATH vacío. Usando fallback interno.")
+    return prompt
 
+
+def _render_system_prompt() -> str:
+    now = datetime.now()
     return (
-        prompt
+        SYSTEM_PROMPT_TEMPLATE
         .replace("{assistant_name}", ASSISTANT_NAME)
         .replace("{emotion_control_instructions}", emotion_control_instructions())
+        .replace("{current_datetime}", now.strftime("%Y-%m-%d %A %H:%M"))
+        .replace("{current_date}", now.strftime("%Y-%m-%d %A"))
+        .replace("{current_time}", now.strftime("%H:%M"))
+        .replace("{timezone}", TIMEZONE_NAME)
     )
 
 
@@ -192,7 +207,7 @@ def listar_recuerdos() -> str:
 
 
 TOOLS = [recordar, olvidar, listar_recuerdos]
-SYSTEM_PROMPT = _cargar_system_prompt()
+SYSTEM_PROMPT_TEMPLATE = _cargar_system_prompt_template()
 
 
 print("==================================================")
@@ -210,12 +225,11 @@ luces.encender_reactor()
 _volver_a_esperando()
 recuerdos.inicializar()
 
-SYSTEM_PROMPT += f"\n\nFECHA ACTUAL DE REFERENCIA: {datetime.now().strftime('%Y-%m-%d %A %H:%M')} (zona horaria Europe/Madrid)."
-
 
 def _prompt_con_memoria() -> str:
+    prompt = _render_system_prompt()
     bloque = recuerdos.formatear_para_prompt()
-    return SYSTEM_PROMPT + ("\n\n" + bloque if bloque else "")
+    return prompt + ("\n\n" + bloque if bloque else "")
 
 
 if INPUT_MODE == "voice":
