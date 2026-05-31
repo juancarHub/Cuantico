@@ -45,6 +45,11 @@ def _vaciar_cola(q: queue.Queue):
             q.task_done()
 
 
+def _esperar_workers(*workers: threading.Thread, timeout: float = 1.0):
+    for worker in workers:
+        worker.join(timeout=timeout)
+
+
 def _hablar_por_archivo(texto, emocion):
     print(f"🔊 TTS provider: {_tts_provider.name}")
     path = _tts_provider.generate_to_file(texto)
@@ -210,11 +215,14 @@ def hablar_stream(generador_texto, emocion="sarcasmo", on_first_audio: Callable[
         if _interrupt_event.is_set():
             _vaciar_cola(frases)
             _vaciar_cola(audios)
-        frases.put(_SENTINEL)
-        frases.join()
-        audios.join()
-        tts_worker.join(timeout=1.0)
-        play_worker.join(timeout=1.0)
+            frases.put(_SENTINEL)
+            audios.put(_SENTINEL)
+            _esperar_workers(tts_worker, play_worker, timeout=1.0)
+        else:
+            frases.put(_SENTINEL)
+            frases.join()
+            audios.join()
+            _esperar_workers(tts_worker, play_worker, timeout=1.0)
 
     if errores:
         raise errores[0]
