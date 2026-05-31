@@ -1,6 +1,7 @@
 import os
 import queue
 import threading
+import time
 from typing import Callable
 
 import luces
@@ -49,6 +50,14 @@ def _esperar_workers(*workers: threading.Thread, timeout: float = 1.0):
     for worker in workers:
         worker.join(timeout=timeout)
         print(f"🧪 INTERRUPT: worker {worker.name} alive={worker.is_alive()}")
+
+
+def _esperar_cola_o_interrupcion(q: queue.Queue) -> bool:
+    while q.unfinished_tasks > 0:
+        if _interrupt_event.is_set():
+            return False
+        time.sleep(0.02)
+    return True
 
 
 def _hablar_por_archivo(texto, emocion):
@@ -224,19 +233,25 @@ def hablar_stream(generador_texto, emocion="sarcasmo", on_first_audio: Callable[
             frases.put(buffer.strip())
     finally:
         print(f"🧪 INTERRUPT: entrar finally hablar_stream interrupted={_interrupt_event.is_set()}")
-        if _interrupt_event.is_set():
-            print("🧪 INTERRUPT: vaciando colas")
+        frases.put(_SENTINEL)
+        if not _esperar_cola_o_interrupcion(frases):
+            print("🧪 INTERRUPT: interrupción mientras esperaba frases")
             _vaciar_cola(frases)
             _vaciar_cola(audios)
-            print("🧪 INTERRUPT: enviando sentinels")
-            frases.put(_SENTINEL)
             audios.put(_SENTINEL)
             _esperar_workers(tts_worker, play_worker, timeout=1.0)
-        else:
-            frases.put(_SENTINEL)
-            frases.join()
-            audios.join()
+            print("🧪 INTERRUPT: saliendo hablar_stream")
+            return
+
+        if not _esperar_cola_o_interrupcion(audios):
+            print("🧪 INTERRUPT: interrupción mientras esperaba audios")
+            _vaciar_cola(audios)
+            audios.put(_SENTINEL)
             _esperar_workers(tts_worker, play_worker, timeout=1.0)
+            print("🧪 INTERRUPT: saliendo hablar_stream")
+            return
+
+        _esperar_workers(tts_worker, play_worker, timeout=1.0)
         print("🧪 INTERRUPT: saliendo hablar_stream")
 
     if errores:
