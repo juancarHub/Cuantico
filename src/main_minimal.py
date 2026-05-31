@@ -1,6 +1,7 @@
 import time
 import threading
 from datetime import datetime
+from pathlib import Path
 
 import altavoz
 import config
@@ -17,7 +18,7 @@ if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     micro = _micro
 
 
-SYSTEM_PROMPT = f"""Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
+DEFAULT_SYSTEM_PROMPT = """Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
 
 PERSONALIDAD:
 - Deadpool pasado por España: sarcasmo afilado, arrogante, bromista y un poco teatrero.
@@ -36,7 +37,7 @@ MEMORIA PERSISTENTE:
 - No guardes datos sensibles.
 
 EMOCIÓN:
-{emotion_control_instructions()}
+{emotion_control_instructions}
 
 FORMATO:
 - Máximo 2 frases. Breve, con carácter, fácil de decir por TTS.
@@ -45,6 +46,21 @@ FORMATO:
 
 
 _tts_lock = threading.Lock()
+
+
+def _cargar_system_prompt() -> str:
+    path = Path(config.SYSTEM_PROMPT_PATH) if config.SYSTEM_PROMPT_PATH else None
+    if path and path.exists():
+        prompt = path.read_text(encoding="utf-8")
+        print(f"🧾 System prompt cargado desde: {path}")
+    else:
+        prompt = DEFAULT_SYSTEM_PROMPT
+        if path:
+            print(f"⚠️ System prompt externo no encontrado: {path}. Usando fallback interno.")
+        else:
+            print("⚠️ SYSTEM_PROMPT_PATH vacío. Usando fallback interno.")
+
+    return prompt.replace("{emotion_control_instructions}", emotion_control_instructions())
 
 
 def _volver_a_esperando():
@@ -171,6 +187,7 @@ def listar_recuerdos() -> str:
 
 
 TOOLS = [recordar, olvidar, listar_recuerdos]
+SYSTEM_PROMPT = _cargar_system_prompt()
 
 
 print("==================================================")
