@@ -56,6 +56,15 @@ FORMATO:
 _tts_lock = threading.Lock()
 
 
+def _now_local() -> datetime:
+    return datetime.now()
+
+
+def _format_current_datetime(now: datetime | None = None) -> str:
+    now = now or _now_local()
+    return now.strftime("%Y-%m-%d %A %H:%M")
+
+
 def _cargar_system_prompt_template() -> str:
     path = Path(config.SYSTEM_PROMPT_PATH) if config.SYSTEM_PROMPT_PATH else None
     if path and path.exists():
@@ -71,15 +80,22 @@ def _cargar_system_prompt_template() -> str:
 
 
 def _render_system_prompt() -> str:
-    now = datetime.now()
+    now = _now_local()
     return (
         SYSTEM_PROMPT_TEMPLATE
         .replace("{assistant_name}", ASSISTANT_NAME)
         .replace("{emotion_control_instructions}", emotion_control_instructions())
-        .replace("{current_datetime}", now.strftime("%Y-%m-%d %A %H:%M"))
+        .replace("{current_datetime}", _format_current_datetime(now))
         .replace("{current_date}", now.strftime("%Y-%m-%d %A"))
         .replace("{current_time}", now.strftime("%H:%M"))
         .replace("{timezone}", TIMEZONE_NAME)
+    )
+
+
+def _inyectar_contexto_temporal_turno(texto: str) -> str:
+    return (
+        f"[Contexto temporal actual: {_format_current_datetime()} ({TIMEZONE_NAME})]\n"
+        f"{texto}"
     )
 
 
@@ -138,7 +154,7 @@ def _stream_limpiando_emocion(chunks):
 
 def _responder_streaming(chat, texto_usuario):
     t_stream = time.perf_counter()
-    stream = chat.stream_message(texto_usuario)
+    stream = chat.stream_message(_inyectar_contexto_temporal_turno(texto_usuario))
     emotion = "sarcasmo"
     first_piece_at = None
     first_audio_logged = False
@@ -276,7 +292,7 @@ try:
                     _responder_streaming(chat, texto_usuario)
                 else:
                     t_llm = time.perf_counter()
-                    response = chat.send_message(texto_usuario)
+                    response = chat.send_message(_inyectar_contexto_temporal_turno(texto_usuario))
                     if config.DEBUG_LATENCY:
                         print(f"⏱️ LLM({_provider.name}): {time.perf_counter() - t_llm:.2f}s")
                     texto_respuesta = (response.text or "").strip()
