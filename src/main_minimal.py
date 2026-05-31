@@ -12,13 +12,14 @@ import recuerdos
 from emotions import emotion_control_instructions, parse_emotion_and_text
 
 INPUT_MODE = config.INPUT_MODE
+ASSISTANT_NAME = config.ASSISTANT_NAME
 micro = None
 if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
     import micro as _micro
     micro = _micro
 
 
-DEFAULT_SYSTEM_PROMPT = """Eres Cuántico, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
+DEFAULT_SYSTEM_PROMPT = """Eres {assistant_name}, una IA con carácter que ahora vive en una tablet Windows con una cara animada en pantalla.
 
 PERSONALIDAD:
 - Deadpool pasado por España: sarcasmo afilado, arrogante, bromista y un poco teatrero.
@@ -60,7 +61,11 @@ def _cargar_system_prompt() -> str:
         else:
             print("⚠️ SYSTEM_PROMPT_PATH vacío. Usando fallback interno.")
 
-    return prompt.replace("{emotion_control_instructions}", emotion_control_instructions())
+    return (
+        prompt
+        .replace("{assistant_name}", ASSISTANT_NAME)
+        .replace("{emotion_control_instructions}", emotion_control_instructions())
+    )
 
 
 def _volver_a_esperando():
@@ -191,11 +196,12 @@ SYSTEM_PROMPT = _cargar_system_prompt()
 
 
 print("==================================================")
-print("  🚀 CUÁNTICO MINIMAL: VOZ + CARA + LLM ")
+print(f"  🚀 {ASSISTANT_NAME.upper()} MINIMAL: VOZ + CARA + LLM ")
 print("==================================================")
 print(f"🧠 Provider configurado: {config.LLM_PROVIDER}")
 print(f"🎙️ Input mode: {INPUT_MODE}")
 print(f"🌊 LLM streaming: {'on' if config.ENABLE_LLM_STREAMING else 'off'}")
+print(f"🪪 Assistant name: {ASSISTANT_NAME}")
 
 _provider = llm.create_provider()
 print(f"🧠 LLM provider activo: {_provider.name}")
@@ -236,20 +242,20 @@ try:
 
             if any(w in texto_usuario.lower() for w in ["apágate", "apagate"]):
                 despedida = "Me piro a dormir en la tablet, bro. No la líes mucho mientras no estoy."
-                print(f"🤖 Cuántico: {despedida}")
+                print(f"🤖 {ASSISTANT_NAME}: {despedida}")
                 _hablar(despedida, "aburrido")
                 raise KeyboardInterrupt
 
             if any(w in texto_usuario.lower() for w in ["adiós", "adios", "hasta luego", "chao"]):
                 despedida = "Cierro el pico, pero conste que estaba quedando espectacular."
-                print(f"🤖 Cuántico: {despedida}")
+                print(f"🤖 {ASSISTANT_NAME}: {despedida}")
                 _hablar(despedida, "sarcasmo")
                 en_conversacion = False
                 continue
 
             luces.cambiar_estado("pensando")
             interaction_state.set_state("processing")
-            print("🤖 Cuántico está procesando...")
+            print(f"🤖 {ASSISTANT_NAME} está procesando...")
 
             try:
                 if config.ENABLE_LLM_STREAMING:
@@ -262,7 +268,7 @@ try:
                     texto_respuesta = (response.text or "").strip()
                     if texto_respuesta:
                         emocion_ia, texto_limpio = parse_emotion_and_text(texto_respuesta)
-                        print(f"🤖 Cuántico [{emocion_ia}]: {texto_limpio}")
+                        print(f"🤖 {ASSISTANT_NAME} [{emocion_ia}]: {texto_limpio}")
                         _hablar(texto_limpio, emocion_ia)
                     else:
                         _volver_a_esperando()
@@ -283,4 +289,4 @@ finally:
         micro.cerrar()
     luces.apagar_reactor()
     time.sleep(0.5)
-    print("Cuántico minimal fuera.")
+    print(f"{ASSISTANT_NAME} minimal fuera.")
