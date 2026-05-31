@@ -65,7 +65,7 @@ class ScreenDisplay(BaseDisplay):
                 self.operation = "esperando"
                 self.emotion = "neutral"
                 self.t0 = time.time()
-                self.setWindowTitle("Cuántico")
+                self.setWindowTitle(config.ASSISTANT_NAME)
                 self.resize(760, 520)
                 self.setMinimumSize(520, 360)
                 self.setStyleSheet("background: #090909;")
