@@ -152,8 +152,9 @@ def _stream_limpiando_emocion(chunks):
             yield emotion, clean
 
 
-def _responder_streaming(chat, texto_usuario):
+def _responder_streaming(chat, texto_usuario, user_latency_start=None):
     t_stream = time.perf_counter()
+    user_latency_start = user_latency_start or t_stream
     stream = chat.stream_message(_inyectar_contexto_temporal_turno(texto_usuario))
     emotion = "sarcasmo"
     first_piece_at = None
@@ -165,7 +166,9 @@ def _responder_streaming(chat, texto_usuario):
             return
         first_audio_logged = True
         if config.DEBUG_LATENCY:
-            print(f"⏱️ FIRST_AUDIO({_provider.name}): {time.perf_counter() - t_stream:.2f}s")
+            now = time.perf_counter()
+            print(f"⏱️ FIRST_AUDIO({_provider.name}): {now - t_stream:.2f}s")
+            print(f"⏱️ USER_LATENCY({_provider.name}): {now - user_latency_start:.2f}s")
 
     def _texto_limpio():
         nonlocal emotion, first_piece_at
@@ -269,6 +272,7 @@ try:
                 continue
 
             print(f"\n👤 Usuario: {texto_usuario}")
+            user_latency_start = time.perf_counter()
 
             if any(w in texto_usuario.lower() for w in ["apágate", "apagate"]):
                 despedida = "Me piro a dormir en la tablet, bro. No la líes mucho mientras no estoy."
@@ -289,7 +293,7 @@ try:
 
             try:
                 if config.ENABLE_LLM_STREAMING:
-                    _responder_streaming(chat, texto_usuario)
+                    _responder_streaming(chat, texto_usuario, user_latency_start=user_latency_start)
                 else:
                     t_llm = time.perf_counter()
                     response = chat.send_message(_inyectar_contexto_temporal_turno(texto_usuario))
