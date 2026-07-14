@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import subprocess
 import tempfile
 
@@ -32,7 +33,13 @@ class AudioOutput:
 
     def play_file(self, path: str):
         if self._should_use_winsound():
-            self._play_file_windows_blocking(path)
+            try:
+                self._play_file_windows_blocking(path)
+            except RuntimeError:
+                if self.backend == "winsound":
+                    raise
+                print("Audio: FFmpeg no disponible; usando playsound para el archivo original.")
+                self._play_file_playsound(path)
             return
 
         self._play_file_playsound(path)
@@ -59,6 +66,9 @@ class AudioOutput:
         lower = path.lower()
         if lower.endswith(".wav"):
             return path
+
+        if not (shutil.which("ffmpeg") or shutil.which("avconv")):
+            raise RuntimeError("FFmpeg no esta disponible para convertir el audio.")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             wav_path = tmp.name

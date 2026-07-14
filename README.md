@@ -339,3 +339,25 @@ Define una función Python con docstring claro en `src/main.py` y añádela a la
 ## Licencia
 
 Ver `LICENSE`.
+# Servidor para nodos
+
+Cuantico incluye una primera API central para recibir eventos de Luna Vision y enviar ordenes a nodos conectados. Configura en `.env`:
+
+```env
+CUANTICO_SERVER_HOST=0.0.0.0
+CUANTICO_SERVER_PORT=8000
+CUANTICO_API_TOKEN=cambia-este-token
+CUANTICO_NODE_TOKENS=vision_entrada:token-entrada,vision_comedor:token-comedor
+```
+
+Arranca el servidor con `Run_Server.bat`. Endpoints iniciales:
+
+```text
+GET  /health
+POST /api/v1/events
+GET  /api/v1/events
+POST /api/v1/nodes/{source}/speak
+WS   /api/v1/nodes/{source}/stream?token=TOKEN_DEL_NODO
+```
+
+Los eventos HTTP usan `Authorization: Bearer CUANTICO_API_TOKEN`. Las ordenes para nodos desconectados quedan en una cola corta en memoria y se entregan al reconectar.
