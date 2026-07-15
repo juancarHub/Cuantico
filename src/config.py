@@ -68,6 +68,7 @@ def _ruta(clave: str, por_defecto: str = "") -> str:
 
 # Debug / rendimiento
 DEBUG_LATENCY = _bool("DEBUG_LATENCY", False)
+CUANTICO_SERVER_EMBEDDED = _bool("CUANTICO_SERVER_EMBEDDED", True)
 
 # Display / plataforma visual
 DISPLAY_BACKEND = _opt("DISPLAY_BACKEND", "screen").lower()

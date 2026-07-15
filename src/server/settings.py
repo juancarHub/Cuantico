@@ -18,7 +18,10 @@ def node_tokens() -> dict[str, str]:
     raw = os.getenv("CUANTICO_NODE_TOKENS", "").strip()
     tokens: dict[str, str] = {}
     for item in raw.split(","):
-        if not item.strip() or ":" not in item:
+        if not item.strip():
+            continue
+        if ":" not in item:
+            tokens["*"] = item.strip()
             continue
         source, token = item.split(":", 1)
         if source.strip() and token.strip():
@@ -32,3 +35,8 @@ def host() -> str:
 
 def port() -> int:
     return int(os.getenv("CUANTICO_SERVER_PORT", "8000"))
+
+
+def world_db_path() -> Path:
+    configured = os.getenv("CUANTICO_WORLD_DB", "").strip()
+    return Path(configured) if configured else ROOT / "state" / "cuantico_world.db"

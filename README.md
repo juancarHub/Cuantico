@@ -360,4 +360,8 @@ POST /api/v1/nodes/{source}/speak
 WS   /api/v1/nodes/{source}/stream?token=TOKEN_DEL_NODO
 ```
 
-Los eventos HTTP usan `Authorization: Bearer CUANTICO_API_TOKEN`. Las ordenes para nodos desconectados quedan en una cola corta en memoria y se entregan al reconectar.
+Los eventos HTTP pueden usar el token administrativo o el token propio del nodo. Para una instalacion sencilla con un unico token comun tambien se admite `CUANTICO_NODE_TOKENS=token-comun`. Las ordenes para nodos desconectados quedan en una cola corta en memoria y se entregan al reconectar.
+
+El estado persistente se mantiene en `state/cuantico_world.db`. El diseño, las tablas, la reconstruccion y las tools de consulta se documentan en `docs/Cuantico_World.md`.
+
+Con `CUANTICO_SERVER_EMBEDDED=true`, `Run_Cuanti.bat` mantiene la conversacion local y ejecuta la API en segundo plano. No arranques simultaneamente `Run_Server.bat`, porque ambos intentarian usar el puerto 8000. Los eventos de vision actualizan el contexto del modelo sin generar respuestas automaticas; `speech_transcribed` se procesa cuando Cuantico queda libre y la respuesta se dirige al nodo de origen.

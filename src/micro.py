@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 import config
+import interaction_state
 import ui_events
 from audio.input import AudioInput, SAMPLE_RATE, VAD_FRAME, VAD_FRAME_MS
 from stt import create_stt
@@ -134,6 +135,7 @@ def escuchar_push_to_talk():
     else:
         input("\nPulsa ENTER para empezar a grabar... ")
 
+    interaction_state.set_state("listening")
     wav = _audio_input.grabar_manual()
     return _transcribir(wav)
 

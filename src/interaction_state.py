@@ -4,12 +4,22 @@ import threading
 
 _STATE = "idle"
 _lock = threading.Lock()
+_observer = None
 
 
 def set_state(state: str):
     global _STATE
     with _lock:
         _STATE = state
+        observer = _observer
+    if observer is not None:
+        observer(state)
+
+
+def set_observer(observer):
+    global _observer
+    with _lock:
+        _observer = observer
 
 
 def get_state() -> str:

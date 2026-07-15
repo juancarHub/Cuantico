@@ -1,5 +1,6 @@
 import time
 import threading
+import queue
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,11 @@ import llm
 import luces
 import recuerdos
 from emotions import emotion_control_instructions, parse_emotion_and_text
+from server.runtime import EmbeddedServer
+from server.app import world
+from world.tools import build_world_tools
+
+interaction_state.set_observer(lambda state: world.update_runtime(state, state))
 
 INPUT_MODE = config.INPUT_MODE
 ASSISTANT_NAME = config.ASSISTANT_NAME
@@ -54,6 +60,9 @@ FORMATO:
 
 
 _tts_lock = threading.Lock()
+_turn_lock = threading.Lock()
+_remote_queue: queue.Queue[dict | None] = queue.Queue(maxsize=200)
+_embedded_server = None
 
 
 def _now_local() -> datetime:
@@ -93,10 +102,14 @@ def _render_system_prompt() -> str:
 
 
 def _inyectar_contexto_temporal_turno(texto: str) -> str:
-    return (
+    contextualizado = (
         f"[Contexto temporal actual: {_format_current_datetime()} ({TIMEZONE_NAME})]\n"
         f"{texto}"
     )
+    contexto_remoto = world.format_for_prompt()
+    if contexto_remoto:
+        contextualizado += "\n\n" + contexto_remoto
+    return contextualizado
 
 
 def _volver_a_esperando():
@@ -225,7 +238,7 @@ def listar_recuerdos() -> str:
     return " | ".join(f"{r['texto']}" for r in items[:20])
 
 
-TOOLS = [recordar, olvidar, listar_recuerdos]
+TOOLS = [recordar, olvidar, listar_recuerdos, *build_world_tools(world)]
 SYSTEM_PROMPT_TEMPLATE = _cargar_system_prompt_template()
 
 
@@ -248,7 +261,86 @@ recuerdos.inicializar()
 def _prompt_con_memoria() -> str:
     prompt = _render_system_prompt()
     bloque = recuerdos.formatear_para_prompt()
-    return prompt + ("\n\n" + bloque if bloque else "")
+    if bloque:
+        prompt += "\n\n" + bloque
+    return prompt
+
+
+def _encolar_evento_remoto(event: dict) -> None:
+    try:
+        _remote_queue.put_nowait(dict(event))
+    except queue.Full:
+        print("API: cola de eventos remotos llena; evento omitido.")
+
+
+def _procesar_evento_remoto(event: dict) -> None:
+    if event.get("event") in {
+        "person_presence_confirmed",
+        "person_identity_pending",
+        "person_identified",
+        "person_exit_confirmed",
+    }:
+        print(
+            f"Nodo {event.get('source', '-')}: {event.get('event')} "
+            f"({event.get('people_count', 0)} persona(s))"
+        )
+        return
+    if event.get("event") != "speech_transcribed":
+        print(f"API: evento almacenado sin accion: {event.get('event', '-')}")
+        return
+
+    texto = str(event.get("text") or "").strip()
+    source = str(event.get("source") or "").strip()
+    if not texto or not source or _embedded_server is None:
+        return
+
+    while not interaction_state.is_idle():
+        time.sleep(0.1)
+    with _turn_lock:
+        interaction_state.set_state("processing")
+        luces.cambiar_estado("pensando")
+        try:
+            chat = _provider.create_chat(_prompt_con_memoria(), TOOLS)
+            remote_text = (
+                f"[Mensaje hablado recibido desde el nodo {source}, "
+                f"habitacion {event.get('room') or 'sin_asignar'}]\n{texto}"
+            )
+            response = chat.send_message(_inyectar_contexto_temporal_turno(remote_text))
+            raw_response = (response.text or "").strip()
+            emotion, clean_text = parse_emotion_and_text(raw_response)
+            if clean_text:
+                command = {
+                    "event": "node_speak",
+                    "event_id": f"reply:{event.get('event_id') or time.time_ns()}",
+                    "target_source": source,
+                    "text": clean_text,
+                    "emotion": emotion,
+                    "priority": "normal",
+                }
+                connected = _embedded_server.send_to_node(source, command)
+                status = "enviado" if connected else "en cola hasta que conecte"
+                print(f"Respuesta para {source}: {status}")
+        except Exception as exc:
+            print(f"Error procesando audio remoto desde {source}: {exc}")
+        finally:
+            _volver_a_esperando()
+
+
+def _remote_worker() -> None:
+    while True:
+        event = _remote_queue.get()
+        try:
+            if event is None:
+                return
+            _procesar_evento_remoto(event)
+        finally:
+            _remote_queue.task_done()
+
+
+if config.CUANTICO_SERVER_EMBEDDED:
+    _embedded_server = EmbeddedServer(_encolar_evento_remoto)
+    _embedded_server.start()
+    threading.Thread(target=_remote_worker, daemon=True, name="remote_events").start()
 
 
 if INPUT_MODE == "voice":
@@ -287,6 +379,7 @@ try:
                 en_conversacion = False
                 continue
 
+            _turn_lock.acquire()
             luces.cambiar_estado("pensando")
             interaction_state.set_state("processing")
             print(f"🤖 {ASSISTANT_NAME} está procesando...")
@@ -313,12 +406,16 @@ try:
                 except Exception as tts_error:
                     print(f"⚠️ Error adicional en TTS/audio: {tts_error}")
                     _volver_a_esperando()
+            _turn_lock.release()
 
             texto_usuario = _leer_usuario_seguimiento(timeout_ms=8000)
 
 except KeyboardInterrupt:
     print("\n🛑 Desconexión manual detectada.")
 finally:
+    if _embedded_server is not None:
+        _remote_queue.put(None)
+        _embedded_server.stop()
     if INPUT_MODE in ("voice", "push_to_talk", "ptt"):
         micro.cerrar()
     luces.apagar_reactor()
