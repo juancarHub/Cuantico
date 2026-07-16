@@ -53,6 +53,63 @@ class WorldStoreTests(unittest.TestCase):
         self.assertEqual(self.world.room("comedor")["people_count"], 1)
         self.assertEqual(self.world.person("Juancar")["current_location"], "comedor")
 
+    def test_due_schedule_is_claimed_only_once(self):
+        schedule_id = self.world.create_schedule(
+            "reminder_time",
+            "2026-07-15T18:00:00+00:00",
+            {"message": "sacar el pollo"},
+        )
+        due = self.world.claim_due_schedules("2026-07-15T18:00:01+00:00")
+        self.assertEqual([item["schedule_id"] for item in due], [schedule_id])
+        self.assertEqual(
+            self.world.claim_due_schedules("2026-07-15T18:00:02+00:00"),
+            [],
+        )
+
+    def test_event_schedule_matches_room_and_expires(self):
+        matched_id = self.world.create_schedule(
+            "reminder_event",
+            "2026-07-15T19:00:00+00:00",
+            {
+                "event": "person_presence_confirmed",
+                "room": "comedor",
+                "person": "",
+                "message": "ha entrado alguien",
+            },
+        )
+        self.world.create_schedule(
+            "reminder_event",
+            "2026-07-15T17:00:00+00:00",
+            {
+                "event": "person_presence_confirmed",
+                "room": "entrada",
+                "person": "",
+                "message": "demasiado tarde",
+            },
+        )
+        event = vision_event(
+            "e2",
+            "person_presence_confirmed",
+            "2026-07-15T18:00:00+00:00",
+            1,
+            [{"person": "Ana"}],
+        )
+        matched = self.world.claim_event_schedules(
+            event,
+            "2026-07-15T18:00:01+00:00",
+        )
+        self.assertEqual([item["schedule_id"] for item in matched], [matched_id])
+        self.assertEqual(self.world.schedules(), [])
+
+    def test_cancel_schedule_by_message(self):
+        self.world.create_schedule(
+            "reminder_time",
+            "2026-07-15T20:00:00+00:00",
+            {"message": "sacar el pollo del horno"},
+        )
+        self.assertEqual(self.world.cancel_schedule("pollo"), 1)
+        self.assertEqual(self.world.schedules(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

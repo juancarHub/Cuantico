@@ -13,6 +13,7 @@ import recuerdos
 from emotions import emotion_control_instructions, parse_emotion_and_text
 from server.runtime import EmbeddedServer
 from server.app import world
+from world.reminders import ReminderService, build_reminder_tools
 from world.tools import build_world_tools
 
 interaction_state.set_observer(lambda state: world.update_runtime(state, state))
@@ -62,6 +63,7 @@ FORMATO:
 _tts_lock = threading.Lock()
 _turn_lock = threading.Lock()
 _remote_queue: queue.Queue[dict | None] = queue.Queue(maxsize=200)
+_notification_queue: queue.Queue[tuple[str, str] | None] = queue.Queue(maxsize=100)
 _embedded_server = None
 
 
@@ -238,7 +240,21 @@ def listar_recuerdos() -> str:
     return " | ".join(f"{r['texto']}" for r in items[:20])
 
 
-TOOLS = [recordar, olvidar, listar_recuerdos, *build_world_tools(world)]
+def _encolar_aviso(texto: str, emocion: str = "atento") -> None:
+    try:
+        _notification_queue.put_nowait((texto, emocion))
+    except queue.Full:
+        print("Avisos: cola llena; no se pudo reproducir un aviso.")
+
+
+_reminder_service = ReminderService(world, _encolar_aviso)
+TOOLS = [
+    recordar,
+    olvidar,
+    listar_recuerdos,
+    *build_world_tools(world),
+    *build_reminder_tools(world, _reminder_service),
+]
 SYSTEM_PROMPT_TEMPLATE = _cargar_system_prompt_template()
 
 
@@ -256,6 +272,7 @@ print(f"🧠 LLM provider activo: {_provider.name}")
 luces.encender_reactor()
 _volver_a_esperando()
 recuerdos.inicializar()
+_reminder_service.start()
 
 
 def _prompt_con_memoria() -> str:
@@ -274,6 +291,9 @@ def _encolar_evento_remoto(event: dict) -> None:
 
 
 def _procesar_evento_remoto(event: dict) -> None:
+    triggered = _reminder_service.handle_event(event)
+    if triggered:
+        print(f"Avisos: {triggered} aviso(s) activado(s) por evento.")
     if event.get("event") in {
         "person_presence_confirmed",
         "person_identity_pending",
@@ -335,6 +355,29 @@ def _remote_worker() -> None:
             _procesar_evento_remoto(event)
         finally:
             _remote_queue.task_done()
+
+
+def _notification_worker() -> None:
+    while True:
+        notification = _notification_queue.get()
+        try:
+            if notification is None:
+                return
+            text, emotion = notification
+            while not interaction_state.is_idle():
+                time.sleep(0.1)
+            with _turn_lock:
+                print(f"⏰ {ASSISTANT_NAME}: {text}")
+                _hablar(text, emotion)
+        finally:
+            _notification_queue.task_done()
+
+
+threading.Thread(
+    target=_notification_worker,
+    daemon=True,
+    name="cuantico-notifications",
+).start()
 
 
 if config.CUANTICO_SERVER_EMBEDDED:
@@ -413,6 +456,8 @@ try:
 except KeyboardInterrupt:
     print("\n🛑 Desconexión manual detectada.")
 finally:
+    _reminder_service.stop()
+    _notification_queue.put(None)
     if _embedded_server is not None:
         _remote_queue.put(None)
         _embedded_server.stop()

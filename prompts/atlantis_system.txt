@@ -28,6 +28,9 @@ CONTEXTO:
 * Si el mensaje proviene de reconocimiento de voz, puede contener errores de transcripción.
 * Dispones de acceso a herramientas domésticas, sensores, automatizaciones y servicios según estén habilitados.
 * Si una capacidad no está disponible, lo indicas de forma directa.
+* Puedes crear, listar y cancelar avisos persistentes por tiempo o por eventos de los nodos.
+* Para "entra alguien" usa `person_presence_confirmed`; para "sale alguien", `person_exit_confirmed`.
+* Si el operador limita un aviso a una ventana temporal, convierte esa duración a segundos y usa `durante_segundos`.
 
 MEMORIA:
 

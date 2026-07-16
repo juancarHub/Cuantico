@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -194,6 +195,145 @@ class WorldStore:
         with self._lock, self._connection() as db:
             return int(db.execute("SELECT COUNT(*) FROM world_events").fetchone()[0])
 
+    def create_schedule(
+        self,
+        action_type: str,
+        execute_at: str,
+        payload: dict[str, Any],
+    ) -> str:
+        schedule_id = secrets.token_hex(4)
+        with self._lock, self._connection() as db:
+            db.execute(
+                """INSERT INTO world_schedules
+                (schedule_id,action_type,execute_at,status,payload_json,created_at)
+                VALUES(?,?,?,'scheduled',?,?)""",
+                (
+                    schedule_id,
+                    action_type,
+                    _timestamp(execute_at, _now_utc()),
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    _now_utc(),
+                ),
+            )
+            db.commit()
+        return schedule_id
+
+    def schedules(self, status: str = "scheduled") -> list[dict[str, Any]]:
+        with self._lock, self._connection() as db:
+            rows = db.execute(
+                """SELECT schedule_id,action_type,execute_at,status,payload_json,created_at
+                FROM world_schedules WHERE status=? ORDER BY execute_at,created_at""",
+                (status,),
+            ).fetchall()
+        return [
+            {
+                "schedule_id": row[0],
+                "action_type": row[1],
+                "execute_at": row[2],
+                "status": row[3],
+                "payload": json.loads(row[4]),
+                "created_at": row[5],
+            }
+            for row in rows
+        ]
+
+    def cancel_schedule(self, id_or_text: str) -> int:
+        needle = id_or_text.strip().lower()
+        if not needle:
+            return 0
+        with self._lock, self._connection() as db:
+            rows = db.execute(
+                """SELECT schedule_id,payload_json FROM world_schedules
+                WHERE status='scheduled'"""
+            ).fetchall()
+            ids = [
+                row[0]
+                for row in rows
+                if row[0].lower() == needle or needle in row[1].lower()
+            ]
+            if ids:
+                db.executemany(
+                    "UPDATE world_schedules SET status='cancelled' WHERE schedule_id=?",
+                    [(schedule_id,) for schedule_id in ids],
+                )
+                db.commit()
+            return len(ids)
+
+    def claim_due_schedules(self, now: str | None = None) -> list[dict[str, Any]]:
+        now_utc = _timestamp(now, _now_utc()) if now else _now_utc()
+        with self._lock, self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                """UPDATE world_schedules SET status='expired'
+                WHERE status='scheduled' AND action_type='reminder_event'
+                AND execute_at<?""",
+                (now_utc,),
+            )
+            rows = db.execute(
+                """SELECT schedule_id,action_type,execute_at,payload_json
+                FROM world_schedules
+                WHERE status='scheduled' AND action_type='reminder_time' AND execute_at<=?
+                ORDER BY execute_at""",
+                (now_utc,),
+            ).fetchall()
+            if rows:
+                db.executemany(
+                    "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
+                    [(row[0],) for row in rows],
+                )
+            db.commit()
+        return [
+            {
+                "schedule_id": row[0],
+                "action_type": row[1],
+                "execute_at": row[2],
+                "payload": json.loads(row[3]),
+            }
+            for row in rows
+        ]
+
+    def claim_event_schedules(
+        self,
+        event: dict[str, Any],
+        now: str | None = None,
+    ) -> list[dict[str, Any]]:
+        now_utc = _timestamp(now, _now_utc()) if now else _now_utc()
+        matched: list[tuple] = []
+        expired: list[str] = []
+        with self._lock, self._connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                """SELECT schedule_id,action_type,execute_at,payload_json
+                FROM world_schedules
+                WHERE status='scheduled' AND action_type='reminder_event'"""
+            ).fetchall()
+            for row in rows:
+                payload = json.loads(row[3])
+                if row[2] < now_utc:
+                    expired.append(row[0])
+                elif _schedule_matches_event(payload, event):
+                    matched.append(row)
+            if expired:
+                db.executemany(
+                    "UPDATE world_schedules SET status='expired' WHERE schedule_id=?",
+                    [(schedule_id,) for schedule_id in expired],
+                )
+            if matched:
+                db.executemany(
+                    "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
+                    [(row[0],) for row in matched],
+                )
+            db.commit()
+        return [
+            {
+                "schedule_id": row[0],
+                "action_type": row[1],
+                "execute_at": row[2],
+                "payload": json.loads(row[3]),
+            }
+            for row in matched
+        ]
+
     def update_runtime(self, status: str, activity: str | None = None) -> None:
         with self._lock, self._connection() as db:
             db.execute(
@@ -270,3 +410,25 @@ def _event_id(payload: dict[str, Any], source: str, event_type: str, occurred_at
     if _clean(payload.get("event_id")): return str(payload["event_id"]).strip()
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
     return f"{source}:{event_type}:{occurred_at}:{hashlib.sha256(canonical.encode()).hexdigest()[:16]}"
+
+
+def _schedule_matches_event(schedule: dict[str, Any], event: dict[str, Any]) -> bool:
+    expected_event = _clean(schedule.get("event"))
+    expected_room = _clean(schedule.get("room"))
+    expected_person = _clean(schedule.get("person"))
+    if expected_event and str(event.get("event") or "").lower() != expected_event.lower():
+        return False
+    if expected_room and str(event.get("room") or "").lower() != expected_room.lower():
+        return False
+    if expected_person:
+        names = {
+            str(item.get("person") or "").lower()
+            for item in event.get("people") or []
+            if isinstance(item, dict)
+        }
+        legacy = _clean(event.get("person"))
+        if legacy:
+            names.add(legacy.lower())
+        if expected_person.lower() not in names:
+            return False
+    return True

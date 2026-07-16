@@ -23,7 +23,7 @@ La base vive en `state/cuantico_world.db`, usa WAL y queda fuera de Git.
 - `world_room_people`: identidades conocidas presentes en cada habitacion.
 - `world_people`: ubicacion actual, ultimo lugar y ultima vez que se vio cada persona.
 - `world_actions`: intenciones y resultados de acciones futuras.
-- `world_schedules`: acciones programadas.
+- `world_schedules`: avisos temporales y esperas de eventos persistentes.
 - `world_rules`: reglas estructuradas confirmadas por el usuario.
 - `assistant_runtime`: estado vital de Cuantico.
 
@@ -53,6 +53,24 @@ El modelo no tiene acceso SQL. Usa las tools:
 - `consultar_mundo()`
 
 Ademas recibe un resumen pequeno del estado actual en cada turno. Las futuras tools de escritura validaran y registraran eventos; nunca modificaran tablas directamente.
+
+## Avisos persistentes
+
+Cuantico puede crear avisos sin mantener activo al LLM:
+
+- `crear_aviso_en(segundos, mensaje)`: plazo relativo.
+- `crear_aviso_fecha(fecha_hora_iso, mensaje)`: fecha y hora exactas.
+- `crear_aviso_evento(...)`: espera una entrada, salida u otro evento de nodo.
+- `listar_avisos()` y `cancelar_aviso(...)`: administracion.
+
+Los avisos sobreviven a reinicios en `world_schedules`. Un aviso de evento puede
+esperar indefinidamente o caducar tras `durante_segundos`. Cada aviso se activa
+una sola vez. La reproduccion de voz usa una cola independiente y espera a que
+Cuantico no este escuchando, procesando ni hablando.
+
+Los avisos ligados exclusivamente a sensores o dispositivos de Home Assistant
+permanecen bajo responsabilidad del daemon. Los relativos al tiempo, a la
+conversacion y a eventos de nodos pertenecen a Cuantico.
 
 ## API de inspeccion
 
