@@ -60,6 +60,7 @@ Cuantico puede crear avisos sin mantener activo al LLM:
 
 - `crear_aviso_en(segundos, mensaje)`: plazo relativo.
 - `crear_aviso_fecha(fecha_hora_iso, mensaje)`: fecha y hora exactas.
+- `crear_aviso_diario(hora_hhmm, mensaje)`: aviso diario en hora local.
 - `crear_aviso_evento(...)`: espera una entrada, salida u otro evento de nodo.
 - `listar_avisos()` y `cancelar_aviso(...)`: administracion.
 
@@ -67,6 +68,10 @@ Los avisos sobreviven a reinicios en `world_schedules`. Un aviso de evento puede
 esperar indefinidamente o caducar tras `durante_segundos`. Cada aviso se activa
 una sola vez. La reproduccion de voz usa una cola independiente y espera a que
 Cuantico no este escuchando, procesando ni hablando.
+
+Los avisos de evento con `mantener=true` permanecen activos despues de cada
+coincidencia. Los avisos diarios conservan el mismo identificador y calculan su
+proxima ejecucion en `Europe/Madrid`, respetando los cambios de horario.
 
 Los avisos ligados exclusivamente a sensores o dispositivos de Home Assistant
 permanecen bajo responsabilidad del daemon. Los relativos al tiempo, a la

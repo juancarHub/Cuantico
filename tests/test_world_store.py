@@ -110,6 +110,53 @@ class WorldStoreTests(unittest.TestCase):
         self.assertEqual(self.world.cancel_schedule("pollo"), 1)
         self.assertEqual(self.world.schedules(), [])
 
+    def test_recurring_event_schedule_remains_active(self):
+        schedule_id = self.world.create_schedule(
+            "reminder_event",
+            "9999-12-31T23:59:59+00:00",
+            {
+                "event": "person_presence_confirmed",
+                "room": "comedor",
+                "message": "ha entrado alguien",
+                "repeat": True,
+            },
+        )
+        event = vision_event(
+            "e3",
+            "person_presence_confirmed",
+            "2026-07-16T12:00:00+00:00",
+            1,
+        )
+        first = self.world.claim_event_schedules(
+            event,
+            "2026-07-16T12:00:01+00:00",
+        )
+        second = self.world.claim_event_schedules(
+            event | {"event_id": "e4"},
+            "2026-07-16T12:05:01+00:00",
+        )
+        self.assertEqual(first[0]["schedule_id"], schedule_id)
+        self.assertEqual(second[0]["schedule_id"], schedule_id)
+        self.assertEqual(self.world.schedules()[0]["schedule_id"], schedule_id)
+
+    def test_daily_schedule_moves_to_next_local_day(self):
+        schedule_id = self.world.create_schedule(
+            "reminder_time",
+            "2026-07-16T11:00:00+00:00",
+            {
+                "message": "regar",
+                "recurrence": "daily",
+                "hour": 13,
+                "minute": 0,
+                "timezone": "Europe/Madrid",
+            },
+        )
+        due = self.world.claim_due_schedules("2026-07-16T11:00:01+00:00")
+        self.assertEqual(due[0]["schedule_id"], schedule_id)
+        active = self.world.schedules()[0]
+        self.assertEqual(active["schedule_id"], schedule_id)
+        self.assertEqual(active["execute_at"], "2026-07-17T11:00:00+00:00")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,6 +31,8 @@ CONTEXTO:
 * Puedes crear, listar y cancelar avisos persistentes por tiempo o por eventos de los nodos.
 * Para "entra alguien" usa `person_presence_confirmed`; para "sale alguien", `person_exit_confirmed`.
 * Si el operador limita un aviso a una ventana temporal, convierte esa duración a segundos y usa `durante_segundos`.
+* Si pide "todos los días", usa `crear_aviso_diario`.
+* Si pide mantener siempre un aviso por evento, usa `crear_aviso_evento` con `mantener=true`.
 
 MEMORIA:
 

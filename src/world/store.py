@@ -6,9 +6,10 @@ import secrets
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 VISION_EVENTS = {"person_presence_confirmed", "person_identity_pending", "person_identified", "person_exit_confirmed"}
@@ -276,11 +277,19 @@ class WorldStore:
                 ORDER BY execute_at""",
                 (now_utc,),
             ).fetchall()
-            if rows:
-                db.executemany(
-                    "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
-                    [(row[0],) for row in rows],
-                )
+            for row in rows:
+                payload = json.loads(row[3])
+                if payload.get("recurrence") == "daily":
+                    next_at = _next_daily_occurrence(payload, now_utc)
+                    db.execute(
+                        "UPDATE world_schedules SET execute_at=? WHERE schedule_id=?",
+                        (next_at, row[0]),
+                    )
+                else:
+                    db.execute(
+                        "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
+                        (row[0],),
+                    )
             db.commit()
         return [
             {
@@ -319,10 +328,13 @@ class WorldStore:
                     [(schedule_id,) for schedule_id in expired],
                 )
             if matched:
-                db.executemany(
-                    "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
-                    [(row[0],) for row in matched],
-                )
+                for row in matched:
+                    payload = json.loads(row[3])
+                    if not payload.get("repeat"):
+                        db.execute(
+                            "UPDATE world_schedules SET status='triggered' WHERE schedule_id=?",
+                            (row[0],),
+                        )
             db.commit()
         return [
             {
@@ -432,3 +444,15 @@ def _schedule_matches_event(schedule: dict[str, Any], event: dict[str, Any]) -> 
         if expected_person.lower() not in names:
             return False
     return True
+
+
+def _next_daily_occurrence(payload: dict[str, Any], after_utc: str) -> str:
+    timezone_name = str(payload.get("timezone") or "Europe/Madrid")
+    local_zone = ZoneInfo(timezone_name)
+    after = datetime.fromisoformat(after_utc).astimezone(local_zone)
+    hour = int(payload.get("hour", 0))
+    minute = int(payload.get("minute", 0))
+    candidate = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= after:
+        candidate += timedelta(days=1)
+    return candidate.astimezone(timezone.utc).isoformat()
